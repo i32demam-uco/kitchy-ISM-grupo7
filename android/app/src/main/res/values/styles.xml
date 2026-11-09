@@ -2,7 +2,8 @@
 
     <!-- Base application theme. -->
     <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
-        <!-- Customize your theme here. -->
+        <!-- Fondo oscuro nativo para evitar destello blanco antes del arranque de React Native -->
+        <item name="android:windowBackground">#0A0B0E</item>
         <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
     </style>
 

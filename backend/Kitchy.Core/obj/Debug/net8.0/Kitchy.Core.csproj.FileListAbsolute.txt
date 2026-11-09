@@ -1,0 +1,12 @@
+C:\kitchy-ISM-grupo7\backend\Kitchy.Core\bin\Debug\net8.0\Kitchy.Core.deps.json
+C:\kitchy-ISM-grupo7\backend\Kitchy.Core\bin\Debug\net8.0\Kitchy.Core.dll
+C:\kitchy-ISM-grupo7\backend\Kitchy.Core\bin\Debug\net8.0\Kitchy.Core.pdb
+C:\kitchy-ISM-grupo7\backend\Kitchy.Core\obj\Debug\net8.0\Kitchy.Core.GeneratedMSBuildEditorConfig.editorconfig
+C:\kitchy-ISM-grupo7\backend\Kitchy.Core\obj\Debug\net8.0\Kitchy.Core.AssemblyInfoInputs.cache
+C:\kitchy-ISM-grupo7\backend\Kitchy.Core\obj\Debug\net8.0\Kitchy.Core.AssemblyInfo.cs
+C:\kitchy-ISM-grupo7\backend\Kitchy.Core\obj\Debug\net8.0\Kitchy.Core.csproj.CoreCompileInputs.cache
+C:\kitchy-ISM-grupo7\backend\Kitchy.Core\obj\Debug\net8.0\Kitchy.Core.sourcelink.json
+C:\kitchy-ISM-grupo7\backend\Kitchy.Core\obj\Debug\net8.0\Kitchy.Core.dll
+C:\kitchy-ISM-grupo7\backend\Kitchy.Core\obj\Debug\net8.0\refint\Kitchy.Core.dll
+C:\kitchy-ISM-grupo7\backend\Kitchy.Core\obj\Debug\net8.0\Kitchy.Core.pdb
+C:\kitchy-ISM-grupo7\backend\Kitchy.Core\obj\Debug\net8.0\ref\Kitchy.Core.dll

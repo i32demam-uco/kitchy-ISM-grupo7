@@ -35,7 +35,13 @@
 		<true/>
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string></string>
+	<string>Kitchy necesita tu ubicación para avisarte cuando entres al perímetro de 100m de tu supermercado habitual.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Kitchy utiliza la cámara para escanear tickets de compra y códigos de barras de alimentos mediante OCR local.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Kitchy utiliza el micrófono para dictar productos y controlar las recetas en Modo Cocina con las manos libres.</string>
+	<key>NFCReaderUsageDescription</key>
+	<string>Kitchy utiliza NFC para vincular y abrir automáticamente la lista de compra al tocar la etiqueta del frigorífico.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
