@@ -1,14 +1,20 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   StatusBar,
   StyleSheet,
   View,
+  ScrollView,
+  useWindowDimensions,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { Provider } from 'react-redux';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { store, useAppDispatch, useAppSelector } from './src/store';
 import { setInventory } from './src/store/inventorySlice';
+import { setCurrentTab } from './src/store/hardwareSlice';
+import { RootTab } from './src/types';
 import { Colors } from './src/theme';
 import { BottomNavigation } from './src/components/BottomNavigation';
 import { SplashScreen } from './src/components/SplashScreen';
@@ -19,22 +25,23 @@ import { CookingModeScreen } from './src/screens/CookingModeScreen';
 import { ShoppingListScreen } from './src/screens/ShoppingListScreen';
 import { HousesScreen } from './src/screens/HousesScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
+import { FullPantryScreen } from './src/screens/FullPantryScreen';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { RegisterScreen } from './src/screens/RegisterScreen';
 import { NfcGeofenceModal } from './src/components/NfcGeofenceModal';
+
+const MAIN_TABS: RootTab[] = ['home', 'list', 'cook', 'houses'];
 
 /**
  * MainNavigator - Orquestador Principal de Navegación y Estado de Kitchy.
  * 
  * Principios Arquitectónicos Aplicados:
- * 1. Skill Realtime & Offline-First: Carga inmediata e hidratación reactiva del inventario
- *    desde AsyncStorage antes de requerir sincronización de red con PostgreSQL / Supabase.
- * 2. Skill UI/UX Pixel-Perfect & Fricción Cero:
- *    - Si existe un token JWT válido, el SplashScreen transiciona directamente al Dashboard.
- *    - Si no existe sesión activa, presenta LoginScreen con fotorrealismo de cocina oscura y Glassmorphism.
- * 3. Skill Ciberseguridad & QA:
- *    - Cierre de sesión seguro con destrucción de token JWT local.
- *    - Cero emojis y soporte de gestión de perfil de usuario.
+ * 1. Skill UI/UX Architect: Navegación horizontal fluida por gestos (Swipe Navigation)
+ *    entre las 4 pestañas maestras (Inicio, Lista, Cocinar, Hogares) a 60 FPS sin memory leaks.
+ * 2. Dinámica iOS Dynamic Island: Sincronización bidireccional entre el deslizador de páginas
+ *    y la burbuja flotante elástica de BottomNavigation.
+ * 3. Categorización de Despensa: Navegación a FullPantryScreen con taxonomía estructurada.
+ * 4. Skill Realtime & Offline-First: Hidratación inmediata desde AsyncStorage.
  */
 const MainNavigator: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -43,6 +50,10 @@ const MainNavigator: React.FC = () => {
 
   const [isSplashVisible, setIsSplashVisible] = useState(true);
   const [authView, setAuthView] = useState<'login' | 'register'>('login');
+
+  const { width: screenWidth } = useWindowDimensions();
+  const pagerRef = useRef<any>(null);
+  const isProgrammaticScroll = useRef(false);
 
   // Hidratación Offline-First desde Caché Local (RNF3)
   useEffect(() => {
@@ -63,25 +74,43 @@ const MainNavigator: React.FC = () => {
     hydrateLocalCache();
   }, [dispatch]);
 
-  /**
-   * Selector declarativo de pantallas según la pestaña activa del store global.
-   */
-  const renderCurrentScreen = () => {
+  // Sincronizar el scroll del pager horizontal al pulsar una pestaña en la barra inferior
+  useEffect(() => {
+    const tabIndex = MAIN_TABS.indexOf(currentTab);
+    if (tabIndex !== -1 && pagerRef.current) {
+      isProgrammaticScroll.current = true;
+      pagerRef.current.scrollTo({ x: tabIndex * screenWidth, animated: true });
+      const timer = setTimeout(() => {
+        isProgrammaticScroll.current = false;
+      }, 350);
+      return () => clearTimeout(timer);
+    }
+  }, [currentTab, screenWidth]);
+
+  // Manejar el cambio de pestaña cuando el usuario arrastra la pantalla horizontalmente
+  const handleMomentumScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (isProgrammaticScroll.current) return;
+    const offsetX = e.nativeEvent.contentOffset.x;
+    const pageIndex = Math.round(offsetX / screenWidth);
+    const targetTab = MAIN_TABS[pageIndex];
+    if (targetTab && targetTab !== currentTab) {
+      dispatch(setCurrentTab(targetTab));
+    }
+  };
+
+  const isSubScreen =
+    currentTab === 'scan' || currentTab === 'profile' || currentTab === 'pantry';
+
+  const renderSubScreen = () => {
     switch (currentTab) {
-      case 'home':
-        return <DashboardScreen />;
       case 'scan':
         return <TicketScannerScreen />;
-      case 'cook':
-        return <CookingModeScreen />;
-      case 'list':
-        return <ShoppingListScreen />;
-      case 'houses':
-        return <HousesScreen />;
       case 'profile':
         return <ProfileScreen />;
+      case 'pantry':
+        return <FullPantryScreen />;
       default:
-        return <DashboardScreen />;
+        return null;
     }
   };
 
@@ -93,10 +122,35 @@ const MainNavigator: React.FC = () => {
         {/* Flujo Condicional de Autenticación */}
         {isAuthenticated ? (
           <>
-            {/* Contenedor de la Pantalla Activa de la App */}
-            <View style={styles.content}>{renderCurrentScreen()}</View>
+            {/* Contenedor Principal: Pager Deslizable o Subpantalla */}
+            {isSubScreen ? (
+              <View style={styles.content}>{renderSubScreen()}</View>
+            ) : (
+              <ScrollView
+                ref={pagerRef}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                scrollEventThrottle={16}
+                onMomentumScrollEnd={handleMomentumScrollEnd}
+                style={styles.content}
+              >
+                <View style={{ width: screenWidth, flex: 1 }}>
+                  <DashboardScreen />
+                </View>
+                <View style={{ width: screenWidth, flex: 1 }}>
+                  <ShoppingListScreen />
+                </View>
+                <View style={{ width: screenWidth, flex: 1 }}>
+                  <CookingModeScreen />
+                </View>
+                <View style={{ width: screenWidth, flex: 1 }}>
+                  <HousesScreen />
+                </View>
+              </ScrollView>
+            )}
 
-            {/* Barra de Navegación Inferior (Isla Flotante - Ley de Fitts) */}
+            {/* Barra de Navegación Inferior (Isla Flotante con Dynamic Island Bubble) */}
             <BottomNavigation />
 
             {/* Modal de Simulación de Sensores NFC y Geovalla de Supermercado (100m) */}

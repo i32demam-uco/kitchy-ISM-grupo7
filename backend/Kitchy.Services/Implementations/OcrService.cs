@@ -251,7 +251,7 @@ namespace Kitchy.Services.Implementations
                 {
                     new("Tomate frito Hacendado", 2, "ud", 0.85m, 1.70m, DateTime.UtcNow.AddDays(30), "Conservas"),
                     new("Huevos L", 1, "ud", 1.65m, 1.65m, DateTime.UtcNow.AddDays(2), "Lácteos y Huevos"),
-                    new("Pechuga de pollo", 1, "ud", 3.60m, 3.60m, DateTime.UtcNow.AddDays(1), "Carnicería"),
+                    new("Pechuga de pollo", 1, "ud", 3.60m, 3.60m, DateTime.UtcNow.AddDays(1), "Carne"),
                     new("Leche entera", 1, "l", 1.05m, 1.05m, DateTime.UtcNow.AddDays(7), "Lácteos")
                 }
             );
@@ -260,10 +260,11 @@ namespace Kitchy.Services.Implementations
         private static string InferCategory(string name)
         {
             var n = name.ToLower();
-            if (n.Contains("pollo") || n.Contains("carne") || n.Contains("ternera") || n.Contains("jamon")) return "Carnicería";
+            if (n.Contains("pollo") || n.Contains("carne") || n.Contains("ternera") || n.Contains("jamon") || n.Contains("cerdo") || n.Contains("pavo") || n.Contains("salchicha")) return "Carne";
+            if (n.Contains("pescado") || n.Contains("atun") || n.Contains("salmon") || n.Contains("merluza") || n.Contains("bacalao") || n.Contains("gamba") || n.Contains("marisco")) return "Pescado";
             if (n.Contains("huevo")) return "Lácteos y Huevos";
             if (n.Contains("leche") || n.Contains("queso") || n.Contains("yogur")) return "Lácteos";
-            if (n.Contains("tomate") || n.Contains("conserva") || n.Contains("atun")) return "Conservas";
+            if (n.Contains("tomate") || n.Contains("conserva")) return "Conservas";
             if (n.Contains("manzana") || n.Contains("platano") || n.Contains("lechuga")) return "Frutas y Verduras";
             return "Despensa";
         }
@@ -272,7 +273,8 @@ namespace Kitchy.Services.Implementations
         {
             return category switch
             {
-                "Carnicería" => "Nevera",
+                "Carne" => "Nevera",
+                "Pescado" => "Nevera",
                 "Lácteos" => "Nevera",
                 "Lácteos y Huevos" => "Nevera",
                 "Congelados" => "Congelador",

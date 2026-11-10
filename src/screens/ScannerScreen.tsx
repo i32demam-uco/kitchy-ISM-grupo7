@@ -87,7 +87,7 @@ export const ScannerScreen: React.FC = () => {
       unit: '500 g',
       unitPrice: 3.60,
       totalPrice: 3.60,
-      category: 'Carnicería',
+      category: 'Carne',
       estimatedExpiration: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
       imageUrl: 'https://images.unsplash.com/photo-1604503468506-a8da13d82791?w=200',
     },
@@ -253,7 +253,7 @@ export const ScannerScreen: React.FC = () => {
           p.estimatedExpiration ||
           new Date(Date.now() + remainingDays * 24 * 3600 * 1000).toISOString(),
         location:
-          p.category === 'Carnicería' || p.category === 'Lácteos'
+          p.category === 'Carne' || p.category === 'Pescado' || p.category === 'Lácteos' || p.category === 'Lácteos y Huevos'
             ? 'En la nevera'
             : 'Despensa',
         price: p.unitPrice,

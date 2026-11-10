@@ -46,12 +46,14 @@ namespace Kitchy.Core.DTOs
     );
 
     public record UpdateInventoryItemDto(
-        string? Name,
-        decimal? Quantity,
-        string? Unit,
-        DateTime? ExpirationDate,
-        string? Location,
-        decimal? Price
+        string? Name = null,
+        decimal? Quantity = null,
+        string? Unit = null,
+        DateTime? ExpirationDate = null,
+        string? Location = null,
+        decimal? Price = null,
+        Guid? HouseId = null,
+        Guid? ItemId = null
     );
 
     public record InventoryItemDto(

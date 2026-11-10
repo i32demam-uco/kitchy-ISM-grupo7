@@ -1,25 +1,28 @@
-import React from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   Platform,
+  Animated,
+  LayoutChangeEvent,
 } from 'react-native';
 import { Colors, Typography } from '../theme';
 import { RootTab } from '../types';
 import { useAppDispatch, useAppSelector } from '../store';
 import { setCurrentTab, setVoiceListening } from '../store/hardwareSlice';
 
+const BUBBLE_WIDTH = 58;
+
 /**
- * BottomNavigation - Isla Flotante Ergonómica (Ley de Fitts).
+ * BottomNavigation - Isla Flotante con Animación de Burbuja iOS Dynamic Island.
  * 
- * Corrección de Scrum Master:
- * - position: 'absolute', bottom: 22, width: '90%', alignSelf: 'center', borderRadius: 30.
- * - Fondo marengo profundo (#1C1C1E) con borde sutil glassmorphism (0.08).
- * - Botón central FAB posicionado de forma absoluta con top: -28 respecto a la isla,
- *   sobresaliendo físicamente por encima y proyectando sombra verde intensa (#00E676).
- * - Espaciador central fabSpacer para evitar solapamientos con las pestañas laterales.
+ * Principios Arquitectónicos:
+ * 1. UI/UX Architect: Isla flotante (#1C1C1E) despegada de bordes con borderRadius: 30 y borde glassmorphism.
+ * 2. Burbuja Líquida Estilo iOS: Indicador animado mediante físicas elásticas (Spring Physics)
+ *    que se desplaza fluidamente hacia la pestaña activa con efecto 'squash & stretch'.
+ * 3. FAB Central Elevado: Botón de escáner en posición absoluta sobresaliendo 28px con sombra esmeralda.
  */
 export const BottomNavigation: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -27,6 +30,85 @@ export const BottomNavigation: React.FC = () => {
   const shoppingItemsCount = useAppSelector(
     (state) => state.shoppingList.items.filter((i) => !i.isChecked).length
   );
+
+  // Almacena las coordenadas X y anchos medidos de cada botón de pestaña
+  const [tabPositions, setTabPositions] = useState<{
+    [key: string]: { x: number; width: number };
+  }>({});
+
+  // Físicas elásticas de la burbuja (Spring Animation 60 FPS)
+  const bubbleAnimX = useRef(new Animated.Value(8)).current;
+  const bubbleScaleX = useRef(new Animated.Value(1)).current;
+  const bubbleScaleY = useRef(new Animated.Value(1)).current;
+  const bubbleOpacity = useRef(new Animated.Value(1)).current;
+
+  // Registrar la posición en pantalla de cada pestaña
+  const handleTabLayout = (tab: RootTab, event: LayoutChangeEvent) => {
+    const { x, width } = event.nativeEvent.layout;
+    setTabPositions((prev) => ({
+      ...prev,
+      [tab]: { x, width },
+    }));
+  };
+
+  // Transición elástica de la burbuja cuando cambia la pestaña activa
+  useEffect(() => {
+    const activeLayout = tabPositions[currentTab];
+    if (activeLayout) {
+      const targetX = activeLayout.x + (activeLayout.width - BUBBLE_WIDTH) / 2;
+
+      Animated.parallel([
+        // 1. Desplazamiento horizontal elástico (físicas iOS Dynamic Island)
+        Animated.spring(bubbleAnimX, {
+          toValue: targetX,
+          friction: 6,
+          tension: 70,
+          useNativeDriver: true,
+        }),
+        // 2. Squash & Stretch líquido horizontal
+        Animated.sequence([
+          Animated.timing(bubbleScaleX, {
+            toValue: 1.22,
+            duration: 80,
+            useNativeDriver: true,
+          }),
+          Animated.spring(bubbleScaleX, {
+            toValue: 1,
+            friction: 4,
+            tension: 80,
+            useNativeDriver: true,
+          }),
+        ]),
+        // 3. Squash & Stretch líquido vertical
+        Animated.sequence([
+          Animated.timing(bubbleScaleY, {
+            toValue: 0.88,
+            duration: 80,
+            useNativeDriver: true,
+          }),
+          Animated.spring(bubbleScaleY, {
+            toValue: 1,
+            friction: 4,
+            tension: 80,
+            useNativeDriver: true,
+          }),
+        ]),
+        // 4. Opacidad visible
+        Animated.timing(bubbleOpacity, {
+          toValue: 1,
+          duration: 120,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      // Si la pestaña actual es una subpantalla (ej. 'scan', 'profile', 'pantry'), desvanecer suavemente
+      Animated.timing(bubbleOpacity, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [currentTab, tabPositions, bubbleAnimX, bubbleScaleX, bubbleScaleY, bubbleOpacity]);
 
   const handleTabPress = (tab: RootTab) => {
     dispatch(setCurrentTab(tab));
@@ -44,9 +126,26 @@ export const BottomNavigation: React.FC = () => {
     <View style={styles.floatingWrapper} pointerEvents="box-none">
       {/* 1. Cuerpo de la Isla Flotante (Píldora Flotante #1C1C1E) */}
       <View style={styles.islandBar}>
+        {/* Burbuja Flotante Elástica (Dynamic Island Effect) */}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.activeBubble,
+            {
+              opacity: bubbleOpacity,
+              transform: [
+                { translateX: bubbleAnimX },
+                { scaleX: bubbleScaleX },
+                { scaleY: bubbleScaleY },
+              ],
+            },
+          ]}
+        />
+
         {/* Pestaña: Inicio */}
         <TouchableOpacity
           style={styles.tabButton}
+          onLayout={(e) => handleTabLayout('home', e)}
           onPress={() => handleTabPress('home')}
           activeOpacity={0.7}
         >
@@ -61,6 +160,7 @@ export const BottomNavigation: React.FC = () => {
         {/* Pestaña: Lista de la compra con Badge de pendientes */}
         <TouchableOpacity
           style={styles.tabButton}
+          onLayout={(e) => handleTabLayout('list', e)}
           onPress={() => handleTabPress('list')}
           activeOpacity={0.7}
         >
@@ -85,6 +185,7 @@ export const BottomNavigation: React.FC = () => {
         {/* Pestaña: Cocinar (Modo Cocina / Recetas Delta) */}
         <TouchableOpacity
           style={styles.tabButton}
+          onLayout={(e) => handleTabLayout('cook', e)}
           onPress={() => handleTabPress('cook')}
           activeOpacity={0.7}
         >
@@ -99,6 +200,7 @@ export const BottomNavigation: React.FC = () => {
         {/* Pestaña: Hogares (Arquitectura Multihogar) */}
         <TouchableOpacity
           style={styles.tabButton}
+          onLayout={(e) => handleTabLayout('houses', e)}
           onPress={() => handleTabPress('houses')}
           activeOpacity={0.7}
         >
@@ -162,12 +264,30 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 16,
     elevation: 10,
+    position: 'relative',
+  },
+  activeBubble: {
+    position: 'absolute',
+    top: 9,
+    left: 0,
+    width: BUBBLE_WIDTH,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: 'rgba(0, 230, 118, 0.16)',
+    borderWidth: 1.2,
+    borderColor: 'rgba(0, 230, 118, 0.45)',
+    shadowColor: Colors.primaryGreen,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.55,
+    shadowRadius: 10,
+    elevation: 4,
   },
   tabButton: {
     alignItems: 'center',
     justifyContent: 'center',
     flex: 1,
     height: '100%',
+    zIndex: 2,
   },
   iconText: {
     fontSize: 21,
@@ -186,7 +306,7 @@ const styles = StyleSheet.create({
   labelActive: {
     color: '#FFFFFF',
     fontFamily: Typography.bodySemiBold,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   badge: {
     position: 'absolute',
@@ -261,22 +381,23 @@ const styles = StyleSheet.create({
     borderColor: '#000000',
   },
   scannerLaserLine: {
-    width: 18,
-    height: 2,
+    width: 20,
+    height: 1.8,
     backgroundColor: '#000000',
+    borderRadius: 1,
   },
   fabTitle: {
-    fontSize: 8.5,
-    fontFamily: Typography.headingSemiBold,
-    fontWeight: '800',
     color: '#000000',
-    marginTop: 3,
-    letterSpacing: 0.6,
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+    marginTop: 2,
+    fontFamily: Typography.bodySemiBold,
   },
   fabSubLabel: {
-    fontSize: 9.5,
-    color: '#9CA3AF',
-    fontFamily: Typography.body,
-    marginTop: 4,
+    color: '#6B7280',
+    fontSize: 9,
+    fontWeight: '500',
+    marginTop: 5,
   },
 });

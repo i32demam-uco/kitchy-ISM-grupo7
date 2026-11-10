@@ -1,0 +1,33 @@
+import { Vibration, Platform } from 'react-native';
+
+/**
+ * Servicio de Haptic Feedback nativo ligero para Kitchy.
+ * Proporciona respuesta táctil instantánea según las directrices de Apple Human Interface Guidelines.
+ */
+export const HapticFeedback = {
+  selectionAsync: () => {
+    try {
+      if (Platform.OS === 'android') {
+        // Vibración háptica táctil ultra-corta (15 ms)
+        Vibration.vibrate(15);
+      } else {
+        Vibration.vibrate();
+      }
+    } catch {
+      // Ignorar de forma segura en entornos de prueba o dispositivos sin motor háptico
+    }
+  },
+
+  impactAsync: () => {
+    try {
+      if (Platform.OS === 'android') {
+        Vibration.vibrate(35);
+      } else {
+        Vibration.vibrate();
+      }
+    } catch {
+      // Ignorar de forma segura
+    }
+  },
+};
+

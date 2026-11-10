@@ -35,6 +35,47 @@ export class KitchyApiClient {
     return [];
   }
 
+  static async updateInventoryItem(
+    houseId: string,
+    itemId: string,
+    changes: { quantity?: number; expirationDate?: string; location?: string; name?: string }
+  ): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/inventory/update?houseId=${houseId}&id=${itemId}`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ houseId, itemId, ...changes }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  static async deleteInventoryItem(houseId: string, itemId: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/inventory/${itemId}?houseId=${houseId}`, {
+        method: 'DELETE',
+        headers: this.getHeaders(),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  static async discardInventoryItem(houseId: string, barcode: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/inventory/discard?houseId=${houseId}&barcode=${encodeURIComponent(barcode)}`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
   static async calculateDelta(houseId: string, recipeId: string): Promise<RecipeDeltaCalculation> {
     try {
       const res = await fetch(`${API_BASE_URL}/delta/calculate?houseId=${houseId}&recipeId=${recipeId}`, {
@@ -160,7 +201,7 @@ export class KitchyApiClient {
           unit: 'ud',
           unitPrice: 3.60,
           totalPrice: 3.60,
-          category: 'Carnicería',
+          category: 'Carne',
           estimatedExpiration: new Date(Date.now() + 1 * 24 * 3600 * 1000).toISOString(),
         },
         {

@@ -11,6 +11,20 @@ export interface House {
   memberCount: number;
 }
 
+export const PRODUCT_CATEGORIES = [
+  'Todos',
+  'Urgente',
+  'Carne',
+  'Pescado',
+  'Lácteos y Huevos',
+  'Frutas y Verduras',
+  'Despensa y Conservas',
+  'Limpieza y Hogar',
+  'Otros',
+] as const;
+
+export type ProductCategory = (typeof PRODUCT_CATEGORIES)[number];
+
 export interface InventoryItem {
   id: string;
   houseId: string;
@@ -25,6 +39,7 @@ export interface InventoryItem {
   addedByUserId: string;
   urgencyLevel: UrgencyLevel;
   remainingDays: number;
+  category?: string;
   imageUrl?: string;
 }
 
@@ -40,6 +55,7 @@ export interface ShoppingItem {
   addedByUserId: string;
   assignedToUserId?: string;
   createdAt: string;
+  category?: string;
   imageUrl?: string;
 }
 
@@ -108,5 +124,5 @@ export interface OcrTicketResult {
   detectedProducts: DetectedProduct[];
 }
 
-export type RootTab = 'home' | 'list' | 'scan' | 'cook' | 'houses' | 'profile';
+export type RootTab = 'home' | 'list' | 'scan' | 'cook' | 'houses' | 'profile' | 'pantry';
 

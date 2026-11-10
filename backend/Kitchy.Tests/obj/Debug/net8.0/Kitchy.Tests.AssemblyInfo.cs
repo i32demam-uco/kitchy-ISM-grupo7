@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Kitchy.Tests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+94ad9674846148c93376d59f6c4475a05ea536be")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+ccb08480e0d62429dd349b8d3b02bee712632bc8")]
 [assembly: System.Reflection.AssemblyProductAttribute("Kitchy.Tests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Kitchy.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

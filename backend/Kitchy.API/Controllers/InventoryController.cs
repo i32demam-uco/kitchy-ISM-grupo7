@@ -66,6 +66,7 @@ namespace Kitchy.API.Controllers
         }
 
         [HttpPut("{id}")]
+        [HttpPut("update/{id}")]
         public async Task<ActionResult<InventoryItemDto>> UpdateItem(
             Guid id,
             [FromQuery] Guid houseId,
@@ -82,7 +83,31 @@ namespace Kitchy.API.Controllers
             return Ok(updated);
         }
 
+        [HttpPost("update")]
+        [HttpPut("update")]
+        public async Task<ActionResult<InventoryItemDto>> UpdateItemGeneric(
+            [FromBody] UpdateInventoryItemDto dto,
+            [FromQuery] Guid? houseId = null,
+            [FromQuery] Guid? id = null)
+        {
+            var targetHouseId = houseId ?? dto.HouseId ?? Guid.Empty;
+            var targetId = id ?? dto.ItemId ?? Guid.Empty;
+            if (targetHouseId == Guid.Empty || targetId == Guid.Empty)
+            {
+                return BadRequest(new { message = "HouseId and ItemId are required" });
+            }
+
+            if (!await ValidateHouseAccessAsync(_houseRepo, targetHouseId)) return Forbid();
+
+            var updated = await _inventoryService.UpdateItemAsync(targetHouseId, targetId, dto);
+            if (updated == null) return NotFound();
+
+            await _hubContext.Clients.Group($"house_{targetHouseId}").InventoryUpdated("Update", updated);
+            return Ok(updated);
+        }
+
         [HttpDelete("{id}")]
+        [HttpDelete("delete/{id}")]
         public async Task<IActionResult> DeleteItem(Guid id, [FromQuery] Guid houseId)
         {
             if (!await ValidateHouseAccessAsync(_houseRepo, houseId)) return Forbid();

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,7 @@ import {
   ScrollView,
   TextInput,
 } from 'react-native';
-import { Colors } from '../theme';
+import { Colors, Typography } from '../theme';
 import { useAppDispatch, useAppSelector } from '../store';
 import {
   addShoppingItem,
@@ -17,6 +17,19 @@ import {
 } from '../store/shoppingListSlice';
 import { ShoppingItem } from '../types';
 import { KitchyAlert } from '../services/kitchyAlert';
+import { determineCategory } from '../utils/inventoryGrouping';
+import { HapticFeedback } from '../services/haptics';
+
+const FILTER_CHIPS = [
+  'Todos',
+  'Urgente',
+  'Carne',
+  'Pescado',
+  'Lácteos y Huevos',
+  'Frutas y Verduras',
+  'Despensa y Conservas',
+  'Limpieza y Hogar',
+] as const;
 
 export const ShoppingListScreen: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -24,9 +37,41 @@ export const ShoppingListScreen: React.FC = () => {
   const activeHouse = useAppSelector((state) => state.auth.activeHouse);
   const [newItemName, setNewItemName] = useState('');
   const [isVoiceRecording, setIsVoiceRecording] = useState(false);
+  const [selectedFilter, setSelectedFilter] = useState<string>('Todos');
 
-  const activeItems = shoppingItems.filter((i) => !i.isChecked);
-  const completedItems = shoppingItems.filter((i) => i.isChecked);
+  // Filtrado instantáneo local con memoización
+  const filteredShoppingItems = useMemo(() => {
+    if (selectedFilter === 'Todos') return shoppingItems;
+
+    if (selectedFilter === 'Urgente') {
+      return shoppingItems.filter(
+        (i) =>
+          i.source === 'RecipeDelta' ||
+          i.name.toLowerCase().includes('pollo') ||
+          i.name.toLowerCase().includes('leche') ||
+          i.name.toLowerCase().includes('huevo')
+      );
+    }
+
+    return shoppingItems.filter((item) => {
+      const cat = item.category || determineCategory({ name: item.name });
+      if (selectedFilter === 'Carne') return cat === 'Carne';
+      if (selectedFilter === 'Pescado') return cat === 'Pescado';
+      if (selectedFilter === 'Lácteos y Huevos') return cat === 'Lácteos y Huevos';
+      if (selectedFilter === 'Frutas y Verduras') return cat === 'Frutas y Verduras';
+      if (selectedFilter === 'Despensa y Conservas') return cat === 'Despensa y Conservas';
+      if (selectedFilter === 'Limpieza y Hogar') return cat === 'Limpieza y Hogar';
+      return cat === selectedFilter;
+    });
+  }, [shoppingItems, selectedFilter]);
+
+  const activeItems = filteredShoppingItems.filter((i) => !i.isChecked);
+  const completedItems = filteredShoppingItems.filter((i) => i.isChecked);
+
+  const handleFilterSelect = (filter: string) => {
+    HapticFeedback.selectionAsync();
+    setSelectedFilter(filter);
+  };
 
   const handleAddItem = (source: 'Manual' | 'Voice' = 'Manual', customName?: string) => {
     const name = customName || newItemName.trim();
@@ -42,10 +87,12 @@ export const ShoppingListScreen: React.FC = () => {
       source,
       addedByUserId: 'Alejandro',
       createdAt: new Date().toISOString(),
+      category: determineCategory({ name }),
     };
 
     dispatch(addShoppingItem(newItem));
     setNewItemName('');
+    HapticFeedback.selectionAsync();
   };
 
   const handleVoiceAddSimulation = () => {
@@ -110,6 +157,39 @@ export const ShoppingListScreen: React.FC = () => {
         >
           <View style={[styles.voiceDot, isVoiceRecording && styles.voiceDotActive]} />
         </TouchableOpacity>
+      </View>
+
+      {/* 4. ScrollView Horizontal con Chips de Filtrado Interactivo */}
+      <View style={styles.filterChipsWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterChipsScroll}
+        >
+          {FILTER_CHIPS.map((chip) => {
+            const isSelected = selectedFilter === chip;
+            return (
+              <TouchableOpacity
+                key={chip}
+                style={[
+                  styles.filterChip,
+                  isSelected && styles.filterChipActive,
+                ]}
+                onPress={() => handleFilterSelect(chip)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    isSelected && styles.filterChipTextActive,
+                  ]}
+                >
+                  {chip}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
       </View>
 
       <ScrollView
@@ -370,6 +450,35 @@ const styles = StyleSheet.create({
   deleteBtnText: {
     color: '#6B7280',
     fontSize: 14,
+  },
+  filterChipsWrapper: {
+    marginBottom: 12,
+  },
+  filterChipsScroll: {
+    paddingHorizontal: 20,
+    gap: 8,
+  },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: '#1C1C1E',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  filterChipActive: {
+    backgroundColor: Colors.primaryGreen,
+    borderColor: Colors.primaryGreen,
+  },
+  filterChipText: {
+    fontFamily: Typography.body,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#9CA3AF',
+  },
+  filterChipTextActive: {
+    color: '#000000',
+    fontWeight: '700',
   },
 });
 

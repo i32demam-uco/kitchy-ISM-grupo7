@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -22,6 +22,17 @@ export const DashboardScreen: React.FC = () => {
   const auth = useAppSelector((state) => state.auth);
   const inventoryItems = useAppSelector((state) => state.inventory.items);
   const [housePickerVisible, setHousePickerVisible] = useState(false);
+
+  // Requisito: Solo mostrar los 3 o 4 productos más recientemente añadidos (orden descendente)
+  const recentPantryItems = useMemo(() => {
+    return [...inventoryItems]
+      .sort((a, b) => {
+        const timeA = new Date(a.purchaseDate || a.expirationDate || 0).getTime();
+        const timeB = new Date(b.purchaseDate || b.expirationDate || 0).getTime();
+        return timeB - timeA;
+      })
+      .slice(0, 4);
+  }, [inventoryItems]);
 
   const urgentItems = inventoryItems.filter(
     (item) => item.urgencyLevel === 'Red' || item.urgencyLevel === 'Amber'
@@ -191,17 +202,20 @@ export const DashboardScreen: React.FC = () => {
         {/* 3. Sección "Tu Despensa" */}
         <View style={[styles.sectionHeaderRow, { marginTop: 24 }]}>
           <Text style={styles.sectionTitle}>Tu Despensa</Text>
-          <TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => dispatch(setCurrentTab('pantry'))}
+            activeOpacity={0.7}
+          >
             <Text style={styles.verTodoText}>Ver todo &gt;</Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.pantryListCard}>
-          {inventoryItems.map((item, index) => {
-            const isLast = index === inventoryItems.length - 1;
+          {recentPantryItems.map((item, index) => {
+            const isLast = index === recentPantryItems.length - 1;
             return (
               <View
-                key={item.id}
+                key={`${item.id}-${index}`}
                 style={[styles.pantryRow, !isLast && styles.pantryRowBorder]}
               >
                 <View style={styles.pantryRowLeft}>

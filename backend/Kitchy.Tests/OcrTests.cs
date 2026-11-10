@@ -53,7 +53,7 @@ namespace Kitchy.Tests
             var pollo = result.DetectedProducts.FirstOrDefault(p => p.Name.Contains("Pollo", StringComparison.OrdinalIgnoreCase));
             Assert.NotNull(pollo);
             Assert.Equal(3.60m, pollo.TotalPrice);
-            Assert.Equal("Carnicería", pollo.Category);
+            Assert.Equal("Carne", pollo.Category);
         }
 
         [Fact]

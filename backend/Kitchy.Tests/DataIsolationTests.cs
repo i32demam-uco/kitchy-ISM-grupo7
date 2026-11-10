@@ -201,5 +201,56 @@ namespace Kitchy.Tests
             Assert.Single(items);
             Assert.Equal("Tomate Frito", items[0].Name);
         }
+
+        [Fact]
+        public async Task InventoryUpdateAndDelete_EnforcesHouseSecurity_ReturnsForbidForUnauthorizedUser()
+        {
+            // GIVEN: Casa X del usuario X con un alimento
+            var (context, houseRepo, inventoryRepo, inventoryService) = CreateTestContext();
+
+            var houseX = await houseRepo.CreateHouseAsync(new House
+            {
+                Name = "Casa Privada X",
+                InviteCode = "SECURE1"
+            }, "usuario_x");
+
+            var item = await inventoryRepo.AddAsync(new InventoryItem
+            {
+                HouseId = houseX.Id,
+                Name = "Pechuga de Pollo",
+                Quantity = 2,
+                Unit = "ud",
+                ExpirationDate = DateTime.UtcNow.AddDays(3),
+                AddedByUserId = "usuario_x"
+            });
+
+            // GIVEN: Usuario Intruso (no pertenece a Casa X)
+            var intrusoController = CreateInventoryController("usuario_intruso", inventoryService, houseRepo);
+
+            // WHEN: Usuario Intruso intenta actualizar cantidad mediante PUT /api/inventory/{id}
+            var updateResult = await intrusoController.UpdateItem(item.Id, houseX.Id, new UpdateInventoryItemDto(Quantity: 1));
+            Assert.IsType<ForbidResult>(updateResult.Result);
+
+            // WHEN: Usuario Intruso intenta actualizar mediante POST /api/inventory/update
+            var updateGenericResult = await intrusoController.UpdateItemGeneric(new UpdateInventoryItemDto(ItemId: item.Id, HouseId: houseX.Id, Quantity: 0));
+            Assert.IsType<ForbidResult>(updateGenericResult.Result);
+
+            // WHEN: Usuario Intruso intenta eliminar mediante DELETE /api/inventory/{id}
+            var deleteResult = await intrusoController.DeleteItem(item.Id, houseX.Id);
+            Assert.IsType<ForbidResult>(deleteResult);
+
+            // GIVEN: Usuario Legítimo X
+            var ownerController = CreateInventoryController("usuario_x", inventoryService, houseRepo);
+
+            // WHEN: Usuario Legítimo actualiza cantidad a 1
+            var legitUpdate = await ownerController.UpdateItem(item.Id, houseX.Id, new UpdateInventoryItemDto(Quantity: 1));
+            var okUpdated = Assert.IsType<OkObjectResult>(legitUpdate.Result);
+            var updatedDto = Assert.IsType<InventoryItemDto>(okUpdated.Value);
+            Assert.Equal(1, updatedDto.Quantity);
+
+            // WHEN: Usuario Legítimo elimina el producto
+            var legitDelete = await ownerController.DeleteItem(item.Id, houseX.Id);
+            Assert.IsType<NoContentResult>(legitDelete);
+        }
     }
 }

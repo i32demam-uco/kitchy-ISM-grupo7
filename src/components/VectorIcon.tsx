@@ -17,7 +17,11 @@ interface VectorIconProps {
     | 'sparkle'
     | 'plus'
     | 'qr-code'
-    | 'barcode';
+    | 'barcode'
+    | 'shopping-cart'
+    | 'calendar'
+    | 'trash'
+    | 'flash';
   size?: number;
   color?: string;
 }
@@ -474,6 +478,89 @@ export const VectorIcon: React.FC<VectorIconProps> = ({
           <View style={{ width: 1.5, height: '100%', backgroundColor: color }} />
           <View style={{ width: 2, height: '100%', backgroundColor: color, borderRadius: 1 }} />
           <View style={{ width: 3.5, height: '100%', backgroundColor: color, borderRadius: 1 }} />
+        </View>
+      );
+
+    case 'shopping-cart':
+      return (
+        <View style={{ width: size, height: size * 0.9, justifyContent: 'center', alignItems: 'center' }}>
+          {/* Cesta del carrito */}
+          <View
+            style={{
+              width: size * 0.8,
+              height: size * 0.55,
+              borderWidth: 1.8,
+              borderColor: color,
+              borderTopWidth: 0,
+              borderBottomLeftRadius: 4,
+              borderBottomRightRadius: 4,
+            }}
+          />
+          {/* Ruedas */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: size * 0.65, marginTop: 2 }}>
+            <View style={{ width: size * 0.16, height: size * 0.16, borderRadius: (size * 0.16) / 2, backgroundColor: color }} />
+            <View style={{ width: size * 0.16, height: size * 0.16, borderRadius: (size * 0.16) / 2, backgroundColor: color }} />
+          </View>
+        </View>
+      );
+
+    case 'calendar':
+      return (
+        <View
+          style={{
+            width: size,
+            height: size * 0.9,
+            borderWidth: 1.8,
+            borderColor: color,
+            borderRadius: 3,
+            overflow: 'hidden',
+          }}
+        >
+          {/* Barra superior de calendario */}
+          <View style={{ width: '100%', height: size * 0.28, backgroundColor: color }} />
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <View style={{ width: size * 0.25, height: size * 0.2, backgroundColor: color, borderRadius: 1 }} />
+          </View>
+        </View>
+      );
+
+    case 'trash':
+      return (
+        <View style={{ width: size * 0.8, height: size, justifyContent: 'center', alignItems: 'center' }}>
+          {/* Tapa del cubo */}
+          <View style={{ width: size * 0.9, height: 2, backgroundColor: color, borderRadius: 1 }} />
+          {/* Cubo */}
+          <View
+            style={{
+              width: size * 0.7,
+              height: size * 0.65,
+              borderWidth: 1.6,
+              borderColor: color,
+              borderTopWidth: 0,
+              borderBottomLeftRadius: 3,
+              borderBottomRightRadius: 3,
+              marginTop: 2,
+            }}
+          />
+        </View>
+      );
+
+    case 'flash':
+      return (
+        <View style={{ width: size * 0.8, height: size, justifyContent: 'center', alignItems: 'center' }}>
+          <View
+            style={{
+              width: 0,
+              height: 0,
+              borderLeftWidth: size * 0.25,
+              borderRightWidth: size * 0.25,
+              borderBottomWidth: size * 0.5,
+              borderLeftColor: 'transparent',
+              borderRightColor: 'transparent',
+              borderBottomColor: color,
+              transform: [{ rotate: '-15deg' }],
+            }}
+          />
         </View>
       );
 

@@ -113,6 +113,28 @@ export const inventorySlice = createSlice({
     removeInventoryItem: (state, action: PayloadAction<string>) => {
       state.items = state.items.filter(i => i.id !== action.payload);
     },
+    updateInventoryItemQuantity: (
+      state,
+      action: PayloadAction<{ id: string; delta?: number; quantity?: number }>
+    ) => {
+      const item = state.items.find(i => i.id === action.payload.id);
+      if (item) {
+        if (action.payload.quantity !== undefined) {
+          item.quantity = Math.max(0, action.payload.quantity);
+        } else if (action.payload.delta !== undefined) {
+          item.quantity = Math.max(0, item.quantity + action.payload.delta);
+        }
+      }
+    },
+    updateInventoryItemDetails: (
+      state,
+      action: PayloadAction<{ id: string; changes: Partial<InventoryItem> }>
+    ) => {
+      const item = state.items.find(i => i.id === action.payload.id);
+      if (item) {
+        Object.assign(item, action.payload.changes);
+      }
+    },
     setFilterUrgentOnly: (state, action: PayloadAction<boolean>) => {
       state.filterUrgentOnly = action.payload;
     },
@@ -124,6 +146,8 @@ export const {
   addInventoryItem,
   addMultipleInventoryItems,
   removeInventoryItem,
+  updateInventoryItemQuantity,
+  updateInventoryItemDetails,
   setFilterUrgentOnly,
 } = inventorySlice.actions;
 
