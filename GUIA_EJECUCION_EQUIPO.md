@@ -257,14 +257,38 @@ npm run android
 ```
 
 ### Error 6: *"ninja: error: manifest 'build.ninja' still dirty after 100 tries / CMAKE_OBJECT_PATH_MAX"*
-- **Causa**: El proyecto está ubicado en una ruta con demasiadas subcarpetas (ej. `Desktop\University\Cuarto\ISM\...`) superando el límite de 250 caracteres de CMake en Windows, o hay archivos residuales en la caché nativa de C++.
+- **Causa**: El proyecto está ubicado en una ruta con demasiadas subcarpetas (ej. `Desktop\University\Cuarto\ISM\...`). En Windows, CMake impone un límite estricto de 250 caracteres (`CMAKE_OBJECT_PATH_MAX`), lo que corrompe el compilador C++ de librerías como VisionCamera y NitroImage.
+- **Solución definitiva (3 pasos)**:
+  1. **Mueve o enlaza la carpeta a la raíz del disco**:
+     - Mueve la carpeta directamente a `C:\kitchy-ISM-grupo7` (o `C:\dev\kitchy-ISM-grupo7`).
+     - *Alternativa sin mover archivos:* Abre PowerShell y crea un enlace directo:
+       ```cmd
+       mklink /J C:\kitchy-ISM-grupo7 "C:\Users\TU_USUARIO\Desktop\...\kitchy-ISM-grupo7"
+       ```
+       Y luego abre y compila desde `C:\kitchy-ISM-grupo7`.
+  2. **Habilita rutas largas en Windows** (PowerShell como Administrador):
+     ```powershell
+     Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1
+     git config --global core.longpaths true
+     ```
+  3. **Limpia los archivos corruptos anteriores y compila**:
+     ```powershell
+     # Desde la carpeta en C:\kitchy-ISM-grupo7:
+     Remove-Item -Recurse -Force android\.cxx, android\app\build, node_modules\react-native-nitro-image\android\.cxx -ErrorAction SilentlyContinue
+     git pull
+     npm install
+     cd android
+     .\gradlew clean
+     cd ..
+     npm run android
+     ```
+
+### Error 7: *"Project with path ':react-native-nitro-image' could not be found in project ':react-native-vision-camera'"*
+- **Causa**: La librería de cámara OCR `react-native-vision-camera` necesita internamente `:react-native-nitro-image` para procesar imágenes con aceleración de hardware.
 - **Solución**:
-  1. Mueve o clona la carpeta del proyecto a una ruta corta como `C:\kitchy-ISM-grupo7`.
-  2. Si existe la carpeta `android/.cxx`, bórrala.
-  3. Ejecuta `git pull` para asegurarte de tener la última versión del repositorio (donde ya se eliminaron paquetes nativos C++ pesados e innecesarios).
-  4. Ejecuta `npm install`.
-  5. Ejecuta `cd android && ./gradlew clean && cd ..`.
-  6. Lanza de nuevo `npm run android`.
+  1. Ejecuta `git pull` para obtener la última versión donde las dependencias están perfectamente alineadas en `package.json`.
+  2. Ejecuta `npm install`.
+  3. Limpia con `cd android && .\gradlew clean && cd ..`.
 
 ---
 ¡Listo! Siguiendo estos pasos, Kitchy funcionará fluidamente en tu teléfono Android físico con sensores, cámara para OCR y hardware en tiempo real.
