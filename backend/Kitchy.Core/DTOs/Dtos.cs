@@ -110,14 +110,38 @@ namespace Kitchy.Core.DTOs
         string? ImageUrl
     );
 
-    // Delta Algorithm (Motor Delta)
+    public record ShoppingListUrgencyStatusDto(
+        bool IsUrgent,
+        string UrgentModeSource, // NONE, MANUAL, AUTO_LOW_STOCK
+        DateTime? UrgentUpdatedAt,
+        int PendingCount
+    );
+
+    public record UpdateUrgencyRequestDto(
+        bool IsUrgent
+    );
+
+    public record ReconcileShoppingListRequestDto(
+        List<DetectedProductDto> DetectedProducts
+    );
+
+    public record ReconciliationResultDto(
+        int ReconciledCount,
+        List<string> ReconciledItemNames,
+        bool IsUrgent,
+        int RemainingCount
+    );
+
+    // Delta Algorithm (Motor Delta - Disponible, Prioritario, Faltante)
     public record MissingIngredientDto(
         string Name,
         decimal RequiredQuantity,
         decimal AvailableQuantity,
         decimal DeficitQuantity,
         string Unit,
-        bool IsMissing
+        bool IsMissing,
+        string Status = "Disponible", // "Disponible", "Prioritario", "Faltante"
+        bool IsExpiringSoon = false
     );
 
     public record RecipeDeltaCalculationDto(
@@ -126,7 +150,9 @@ namespace Kitchy.Core.DTOs
         bool CanCookNow,
         int TotalIngredientsCount,
         int MissingIngredientsCount,
-        List<MissingIngredientDto> Ingredients
+        List<MissingIngredientDto> Ingredients,
+        int PantryMatchPercentage = 100,
+        int UrgentIngredientsCount = 0
     );
 
     public record SendDeltaToShoppingListRequest(
@@ -151,31 +177,80 @@ namespace Kitchy.Core.DTOs
     public record RecipeIngredientDto(
         string Name,
         decimal Quantity,
-        string Unit
+        string Unit,
+        string? Status = "Disponible", // Disponible, Prioritario, Faltante
+        decimal? AvailableQuantity = 0,
+        decimal? DeficitQuantity = 0,
+        bool IsExpiringSoon = false
     );
 
     public record RecipeDto(
         Guid Id,
         Guid? HouseId,
         string Title,
+        string? Subtitle,
         string? Description,
         List<RecipeStepDto> Steps,
         List<RecipeIngredientDto> Ingredients,
         int Servings,
-        int PrepTimeMinutes,
+        int TotalTimeMinutes,
+        string Difficulty,
+        int CaloriesKcal,
+        int PantryMatchPercentage,
+        string SourceType,
         string? ImageUrl,
         string Source,
-        bool CanCookWithCurrentStock
+        bool CanCookWithCurrentStock,
+        bool IsFavorite = false,
+        string? CreatedBy = null,
+        int PrepTimeMinutes = 20
     );
 
     public record CreateRecipeDto(
         string Title,
+        string? Subtitle,
         string? Description,
         int Servings,
-        int PrepTimeMinutes,
+        int TotalTimeMinutes,
+        string? Difficulty,
+        int? CaloriesKcal,
         string? ImageUrl,
         List<RecipeStepDto> Steps,
-        List<RecipeIngredientDto> Ingredients
+        List<RecipeIngredientDto> Ingredients,
+        int? PrepTimeMinutes = null
+    );
+
+    public record UpdateRecipeDto(
+        string? Title,
+        string? Subtitle,
+        string? Description,
+        int? Servings,
+        int? TotalTimeMinutes,
+        string? Difficulty,
+        int? CaloriesKcal,
+        string? ImageUrl,
+        List<RecipeStepDto>? Steps,
+        List<RecipeIngredientDto>? Ingredients
+    );
+
+    public record CompleteCookingRequestDto(
+        int ServingsMultiplier = 1
+    );
+
+    public record CompleteCookingResultDto(
+        Guid RecipeId,
+        string RecipeTitle,
+        int ItemsDeductedCount,
+        List<string> DeductedItemsSummary,
+        string ChatNotificationMessage
+    );
+
+    public record GenerateRecipeOptionsRequestDto(
+        Guid HouseId,
+        bool ForceUrgentPriority = true,
+        int MaxOptions = 4,
+        List<string>? ForcedIngredients = null,
+        string? CravingPrompt = null
     );
 
     // OCR & Receipts
@@ -216,5 +291,88 @@ namespace Kitchy.Core.DTOs
         string DefaultUnit,
         decimal? NetWeight
     );
+
+    // Social & Collaboration (House Chat, Realtime & System Actions)
+    public record ActionProductItemDto(
+        string ProductName,
+        decimal Quantity,
+        string Unit,
+        string? ImageUrl = null
+    );
+
+    public record HouseMessageActionMetadataDto(
+        string ActionType, // CONSUMED, SCANNED_TICKET, ADDED_MANUAL, COOKED_RECIPE
+        string PerformedBy,
+        string PerformedByName,
+        List<ActionProductItemDto> AffectedProducts,
+        decimal? StockRemaining = null,
+        int? TotalAdded = null,
+        string? StoreName = null
+    );
+
+    public record HouseMessageDto(
+        Guid Id,
+        Guid HouseId,
+        string SenderId,
+        string SenderName,
+        string? SenderAvatar,
+        string MessageType, // TEXT, IMAGE, VIDEO, SYSTEM_ACTION
+        string Content,
+        string? MediaUrl,
+        string? MediaThumbnailUrl,
+        HouseMessageActionMetadataDto? ActionMetadata,
+        DateTime CreatedAt
+    );
+
+    public record CreateHouseMessageDto(
+        string? Content,
+        string MessageType = "TEXT",
+        string? MediaUrl = null,
+        string? MediaThumbnailUrl = null,
+        HouseMessageActionMetadataDto? ActionMetadata = null
+    );
+
+    public record HouseMemberDto(
+        string UserId,
+        string FullName,
+        string? AvatarUrl,
+        string Role,
+        bool IsOnline,
+        DateTime JoinedAt
+    );
+
+    public record HouseMemberPresenceDto(
+        string UserId,
+        string FullName,
+        string? AvatarUrl,
+        string Role,
+        bool IsOnline,
+        DateTime? LastSeenAt
+    );
+
+    public record InventoryDeltaDto(
+        string Action, // CONSUMED, ADDED, DELETED, UPDATED
+        Guid ItemId,
+        string ItemName,
+        decimal NewQuantity,
+        decimal QuantityDelta,
+        string Unit,
+        string PerformedByUserId,
+        string? ImageUrl = null
+    );
+
+    public record ConsumeProductRequestDto(
+        decimal Quantity
+    );
+
+    // Image Matching & Semantic Cascade
+    public record ImageMatchResultDto(
+        string ImageUrl,
+        string Source,
+        string MatchedTerm,
+        string? TranslatedSubtype = null,
+        double Confidence = 0.9
+    );
 }
+
 

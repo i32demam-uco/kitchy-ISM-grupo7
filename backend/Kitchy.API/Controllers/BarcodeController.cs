@@ -12,10 +12,12 @@ namespace Kitchy.API.Controllers
     public class BarcodeController : BaseKitchyController
     {
         private readonly IOpenFoodFactsService _offService;
+        private readonly IImageMatchingService _imageMatchingService;
 
-        public BarcodeController(IOpenFoodFactsService offService)
+        public BarcodeController(IOpenFoodFactsService offService, IImageMatchingService imageMatchingService)
         {
             _offService = offService;
+            _imageMatchingService = imageMatchingService;
         }
 
         [HttpGet("{barcode}")]
@@ -30,6 +32,18 @@ namespace Kitchy.API.Controllers
             if (product == null) return NotFound("Product not found in Open Food Facts or local catalog.");
 
             return Ok(product);
+        }
+
+        [HttpGet("match-image")]
+        public async Task<ActionResult<ImageMatchResultDto>> MatchImage([FromQuery] string name, [FromQuery] string? category = null, [FromQuery] string? barcode = null)
+        {
+            if (string.IsNullOrWhiteSpace(name) && string.IsNullOrWhiteSpace(barcode))
+            {
+                return BadRequest("Product name or barcode is required.");
+            }
+
+            var match = await _imageMatchingService.MatchImageAsync(name, category, barcode);
+            return Ok(match);
         }
     }
 }

@@ -17,7 +17,9 @@ namespace Kitchy.Infrastructure.Data
         public DbSet<ShoppingListItem> ShoppingList => Set<ShoppingListItem>();
         public DbSet<Recipe> Recipes => Set<Recipe>();
         public DbSet<RecipeIngredient> RecipeIngredients => Set<RecipeIngredient>();
+        public DbSet<RecipeFavorite> RecipeFavorites => Set<RecipeFavorite>();
         public DbSet<PriceHistoryItem> PriceHistory => Set<PriceHistoryItem>();
+        public DbSet<HouseMessage> HouseMessages => Set<HouseMessage>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -47,6 +49,17 @@ namespace Kitchy.Infrastructure.Data
             modelBuilder.Entity<MasterProduct>()
                 .HasIndex(p => p.Barcode)
                 .IsUnique();
+
+            // RecipeFavorite unique index
+            modelBuilder.Entity<RecipeFavorite>()
+                .HasIndex(rf => new { rf.UserId, rf.RecipeId })
+                .IsUnique();
+
+            // HouseMessage indexes
+            modelBuilder.Entity<HouseMessage>()
+                .HasIndex(m => m.HouseId);
+            modelBuilder.Entity<HouseMessage>()
+                .HasIndex(m => m.CreatedAt);
 
             // Recipe relationships
             modelBuilder.Entity<Recipe>()

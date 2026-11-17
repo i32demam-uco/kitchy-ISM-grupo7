@@ -16,6 +16,9 @@ CREATE TABLE IF NOT EXISTS public.houses (
     longitude DOUBLE PRECISION,
     invite_code VARCHAR(50) UNIQUE DEFAULT substring(md5(random()::text) from 1 for 8),
     join_code VARCHAR(50),
+    is_urgent BOOLEAN NOT NULL DEFAULT FALSE,
+    urgent_mode_source VARCHAR(50) NOT NULL DEFAULT 'NONE',
+    urgent_updated_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
 
@@ -86,19 +89,38 @@ CREATE TABLE IF NOT EXISTS public.shopping_list (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
 
--- 7. TABLA: RECIPES (RECETARIO INTELIGENTE)
+-- 7. TABLA: RECIPES (RECETARIO INTELIGENTE CON MOTOR IA GEMINI Y DELTA)
 CREATE TABLE IF NOT EXISTS public.recipes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     house_id UUID REFERENCES public.houses(id) ON DELETE CASCADE, -- NULL = Receta global comunitaria
+    created_by VARCHAR(100),
     title VARCHAR(200) NOT NULL,
-    description TEXT,
-    instructions_json TEXT NOT NULL, -- Array estructurado con pasos para Modo Cocina
-    servings INT NOT NULL DEFAULT 2,
-    prep_time_minutes INT NOT NULL DEFAULT 20,
+    subtitle VARCHAR(255),
     image_url TEXT,
-    source VARCHAR(50) DEFAULT 'KitchySystem', -- 'KitchySystem', 'Edamam', 'MazapanLabs', 'UserCustom'
+    servings INT NOT NULL DEFAULT 2,
+    total_time_minutes INT NOT NULL DEFAULT 20,
+    difficulty VARCHAR(50) DEFAULT 'Media', -- 'Fácil', 'Media', 'Difícil'
+    calories_kcal INT DEFAULT 450,
+    pantry_match_percentage INT DEFAULT 100,
+    source_type VARCHAR(50) DEFAULT 'AI_GENERATED', -- 'AI_GENERATED', 'USER_CREATED', 'SYSTEM_PRESET'
+    ingredients JSONB NOT NULL DEFAULT '[]'::jsonb,
+    steps JSONB NOT NULL DEFAULT '[]'::jsonb,
+    description TEXT,
+    instructions_json TEXT, -- Compatibilidad legacy
+    prep_time_minutes INT DEFAULT 20,
+    source VARCHAR(50) DEFAULT 'KitchySystem',
     created_by_user_id VARCHAR(100),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+-- 7.1. TABLA: RECIPE_FAVORITES (FAVORITOS DE USUARIO)
+CREATE TABLE IF NOT EXISTS public.recipe_favorites (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id VARCHAR(100) NOT NULL,
+    recipe_id UUID NOT NULL REFERENCES public.recipes(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    CONSTRAINT uq_user_recipe_favorite UNIQUE (user_id, recipe_id)
 );
 
 -- 8. TABLA: RECIPE_INGREDIENTS (INGREDIENTES PARA MOTOR MATEMÁTICO DELTA)
@@ -121,6 +143,19 @@ CREATE TABLE IF NOT EXISTS public.price_history (
     purchase_date TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
 
+-- 10. TABLA: HOUSE_MESSAGES (CHAT MULTIMEDIA Y EVENTOS AUTOMÁTICOS DE INVENTARIO)
+CREATE TABLE IF NOT EXISTS public.house_messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    house_id UUID NOT NULL REFERENCES public.houses(id) ON DELETE CASCADE,
+    sender_id VARCHAR(100) NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    message_type VARCHAR(50) NOT NULL DEFAULT 'TEXT', -- 'TEXT', 'IMAGE', 'VIDEO', 'SYSTEM_ACTION'
+    content TEXT NOT NULL,
+    media_url TEXT,
+    media_thumbnail_url TEXT,
+    action_metadata JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
 -- ÍNDICES PARA RENDIMIENTO ÓPTIMO Y MULTIHOGAR
 CREATE INDEX IF NOT EXISTS idx_inventory_house ON public.inventory(house_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_expiration ON public.inventory(expiration_date);
@@ -130,12 +165,14 @@ CREATE INDEX IF NOT EXISTS idx_user_houses_house ON public.user_houses(house_id)
 CREATE INDEX IF NOT EXISTS idx_recipes_house ON public.recipes(house_id);
 CREATE INDEX IF NOT EXISTS idx_recipe_ingredients_recipe ON public.recipe_ingredients(recipe_id);
 CREATE INDEX IF NOT EXISTS idx_master_products_barcode ON public.master_products(barcode);
+CREATE INDEX IF NOT EXISTS idx_house_messages_house ON public.house_messages(house_id);
+CREATE INDEX IF NOT EXISTS idx_house_messages_created ON public.house_messages(created_at);
 
 -- ACTIVAR REALTIME DE SUPABASE EN TABLAS COLABORATIVAS
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
-        ALTER PUBLICATION supabase_realtime ADD TABLE public.inventory, public.shopping_list;
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.inventory, public.shopping_list, public.house_messages;
     END IF;
 EXCEPTION WHEN OTHERS THEN
     -- Ignore if already added or limited permissions
@@ -148,6 +185,7 @@ ALTER TABLE public.inventory ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.shopping_list ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recipes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recipe_ingredients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.house_messages ENABLE ROW LEVEL SECURITY;
 
 -- 1. Un usuario solo puede acceder a casas donde es miembro
 CREATE POLICY "House membership isolation" ON public.houses
@@ -168,6 +206,32 @@ CREATE POLICY "UserHouses membership isolation" ON public.user_houses
             WHERE uh.user_id = auth.uid()::text 
                OR uh.user_id = coalesce(current_setting('request.jwt.claim.sub', true), '')
                OR uh.user_id = 'aleja'
+        )
+    );
+
+-- 3. HouseMessages: Aislamiento estricto de mensajes por hogar
+CREATE POLICY "HouseMessages household isolation" ON public.house_messages
+    FOR ALL USING (
+        house_id IN (
+            SELECT uh.house_id FROM public.user_houses uh 
+            WHERE uh.user_id = auth.uid()::text 
+               OR uh.user_id = coalesce(current_setting('request.jwt.claim.sub', true), '')
+               OR uh.user_id = 'aleja'
+        )
+    );
+
+-- 4. Supabase Storage Bucket: house-chat-media con RLS
+-- INSERT INTO storage.buckets (id, name, public) VALUES ('house-chat-media', 'house-chat-media', false) ON CONFLICT DO NOTHING;
+-- CREATE POLICY "House chat media isolation" ON storage.objects
+--   FOR ALL USING (
+--     bucket_id = 'house-chat-media' AND (
+--       (storage.foldername(name))[1]::uuid IN (
+--         SELECT uh.house_id FROM public.user_houses uh
+--         WHERE uh.user_id = auth.uid()::text OR uh.user_id = 'aleja'
+--       )
+--     )
+--   );
+
         )
     );
 
@@ -206,6 +270,16 @@ CREATE POLICY "Recipes household access" ON public.recipes
 
 CREATE POLICY "RecipeIngredients public read" ON public.recipe_ingredients
     FOR ALL USING (true);
+
+-- 6. RecipeFavorites: Favoritos exclusivos del usuario
+ALTER TABLE public.recipe_favorites ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "RecipeFavorites user access" ON public.recipe_favorites
+    FOR ALL USING (
+        user_id = auth.uid()::text 
+        OR user_id = coalesce(current_setting('request.jwt.claim.sub', true), '')
+        OR user_id = 'aleja'
+    );
 
 -- ====================================================================
 -- DATOS SEMILLA (ALINEADOS CON PROTOTIPO FIGMA / MOCKUP)

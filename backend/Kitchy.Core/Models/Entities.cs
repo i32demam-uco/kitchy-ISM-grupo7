@@ -65,6 +65,16 @@ namespace Kitchy.Core.Models
         [Column("invite_code")]
         public string InviteCode { get; set; } = Guid.NewGuid().ToString("N")[..8];
 
+        [Column("is_urgent")]
+        public bool IsUrgent { get; set; } = false;
+
+        [MaxLength(50)]
+        [Column("urgent_mode_source")]
+        public string UrgentModeSource { get; set; } = "NONE"; // NONE, MANUAL, AUTO_LOW_STOCK
+
+        [Column("urgent_updated_at")]
+        public DateTime? UrgentUpdatedAt { get; set; }
+
         [Column("created_at")]
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
@@ -73,6 +83,7 @@ namespace Kitchy.Core.Models
         public ICollection<InventoryItem> InventoryItems { get; set; } = new List<InventoryItem>();
         public ICollection<ShoppingListItem> ShoppingListItems { get; set; } = new List<ShoppingListItem>();
         public ICollection<Recipe> Recipes { get; set; } = new List<Recipe>();
+        public ICollection<HouseMessage> HouseMessages { get; set; } = new List<HouseMessage>();
     }
 
     [Table("user_houses")]
@@ -280,26 +291,56 @@ namespace Kitchy.Core.Models
         [ForeignKey(nameof(HouseId))]
         public House? House { get; set; }
 
+        [MaxLength(100)]
+        [Column("created_by")]
+        public string? CreatedBy { get; set; }
+
         [Required]
         [MaxLength(200)]
         [Column("title")]
         public string Title { get; set; } = string.Empty;
 
+        [MaxLength(255)]
+        [Column("subtitle")]
+        public string? Subtitle { get; set; }
+
         [Column("description")]
         public string? Description { get; set; }
 
-        [Required]
-        [Column("instructions_json")]
-        public string InstructionsJson { get; set; } = "[]";
+        [Column("image_url")]
+        public string? ImageUrl { get; set; }
 
         [Column("servings")]
         public int Servings { get; set; } = 2;
 
+        [Column("total_time_minutes")]
+        public int TotalTimeMinutes { get; set; } = 20;
+
+        [MaxLength(50)]
+        [Column("difficulty")]
+        public string Difficulty { get; set; } = "Media";
+
+        [Column("calories_kcal")]
+        public int CaloriesKcal { get; set; } = 450;
+
+        [Column("pantry_match_percentage")]
+        public int PantryMatchPercentage { get; set; } = 100;
+
+        [MaxLength(50)]
+        [Column("source_type")]
+        public string SourceType { get; set; } = "AI_GENERATED";
+
+        [Column("ingredients")]
+        public string IngredientsJson { get; set; } = "[]";
+
+        [Column("steps")]
+        public string StepsJson { get; set; } = "[]";
+
+        [Column("instructions_json")]
+        public string InstructionsJson { get; set; } = "[]";
+
         [Column("prep_time_minutes")]
         public int PrepTimeMinutes { get; set; } = 20;
-
-        [Column("image_url")]
-        public string? ImageUrl { get; set; }
 
         [MaxLength(50)]
         [Column("source")]
@@ -312,8 +353,35 @@ namespace Kitchy.Core.Models
         [Column("created_at")]
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+        [Column("updated_at")]
+        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
         // Navigation
         public ICollection<RecipeIngredient> Ingredients { get; set; } = new List<RecipeIngredient>();
+        public ICollection<RecipeFavorite> Favorites { get; set; } = new List<RecipeFavorite>();
+    }
+
+    [Table("recipe_favorites")]
+    public class RecipeFavorite
+    {
+        [Key]
+        [Column("id")]
+        public Guid Id { get; set; } = Guid.NewGuid();
+
+        [Required]
+        [MaxLength(100)]
+        [Column("user_id")]
+        public string UserId { get; set; } = string.Empty;
+
+        [Required]
+        [Column("recipe_id")]
+        public Guid RecipeId { get; set; }
+
+        [ForeignKey(nameof(RecipeId))]
+        public Recipe? Recipe { get; set; }
+
+        [Column("created_at")]
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
 
     [Table("recipe_ingredients")]
@@ -381,5 +449,50 @@ namespace Kitchy.Core.Models
         [Column("purchase_date")]
         public DateTime PurchaseDate { get; set; } = DateTime.UtcNow;
     }
+
+    [Table("house_messages")]
+    public class HouseMessage
+    {
+        [Key]
+        [Column("id")]
+        public Guid Id { get; set; } = Guid.NewGuid();
+
+        [Required]
+        [Column("house_id")]
+        public Guid HouseId { get; set; }
+
+        [ForeignKey(nameof(HouseId))]
+        public House? House { get; set; }
+
+        [Required]
+        [MaxLength(100)]
+        [Column("sender_id")]
+        public string SenderId { get; set; } = string.Empty;
+
+        [ForeignKey(nameof(SenderId))]
+        public User? Sender { get; set; }
+
+        [Required]
+        [MaxLength(50)]
+        [Column("message_type")]
+        public string MessageType { get; set; } = "TEXT"; // TEXT, IMAGE, VIDEO, SYSTEM_ACTION
+
+        [Required]
+        [Column("content")]
+        public string Content { get; set; } = string.Empty;
+
+        [Column("media_url")]
+        public string? MediaUrl { get; set; }
+
+        [Column("media_thumbnail_url")]
+        public string? MediaThumbnailUrl { get; set; }
+
+        [Column("action_metadata")]
+        public string? ActionMetadataJson { get; set; }
+
+        [Column("created_at")]
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    }
 }
+
 

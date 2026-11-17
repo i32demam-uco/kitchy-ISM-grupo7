@@ -55,12 +55,72 @@ export const CustomAlertModal: React.FC = () => {
     }
   };
 
+  const lowerTitle = alertData.title.toLowerCase();
+  const lowerMsg = (alertData.message || '').toLowerCase();
+
+  const isExitOrLogoutType =
+    lowerTitle.includes('cerrar sesión') ||
+    lowerMsg.includes('cerrar sesión') ||
+    lowerTitle.includes('salir de kitchy') ||
+    lowerTitle.includes('salir de la app') ||
+    lowerTitle.includes('¿salir') ||
+    lowerMsg.includes('salir de la aplicación') ||
+    lowerMsg.includes('salir de kitchy') ||
+    alertData.buttons?.some(
+      (b) =>
+        b.text.toLowerCase().includes('cerrar sesión') ||
+        b.text.toLowerCase() === 'salir'
+    );
+
+  const isDeleteType =
+    lowerTitle.includes('eliminar') ||
+    lowerTitle.includes('borrar') ||
+    alertData.buttons?.some(
+      (b) =>
+        b.text.toLowerCase().includes('eliminar') ||
+        b.text.toLowerCase().includes('borrar')
+    );
+
+  const isDestructiveType =
+    isDeleteType ||
+    isExitOrLogoutType ||
+    alertData.buttons?.some((b) => b.style === 'destructive');
+
   const isSuccessType =
-    alertData.title.includes('✓') ||
-    alertData.title.includes('Faltantes') ||
-    alertData.title.includes('guardados') ||
-    alertData.title.includes('Hogar') ||
-    alertData.title.includes('listo');
+    !isDestructiveType &&
+    (alertData.title.includes('✓') ||
+      lowerTitle.includes('éxito') ||
+      lowerTitle.includes('completad') ||
+      lowerTitle.includes('actualizad') ||
+      lowerTitle.includes('faltantes') ||
+      lowerTitle.includes('guardados') ||
+      lowerTitle.includes('hogar') ||
+      lowerTitle.includes('listo') ||
+      lowerTitle.includes('escaneado'));
+
+  const iconName = isExitOrLogoutType
+    ? 'logout'
+    : isDeleteType || isDestructiveType
+    ? 'trash'
+    : isSuccessType
+    ? 'check'
+    : 'bell';
+
+  const iconColor = isExitOrLogoutType
+    ? '#F59E0B'
+    : isDestructiveType
+    ? '#EF4444'
+    : isSuccessType
+    ? Colors.primaryGreen
+    : '#3B82F6';
+
+  const iconBoxStyle = isExitOrLogoutType
+    ? styles.iconBoxWarning
+    : isDestructiveType
+    ? styles.iconBoxDestructive
+    : isSuccessType
+    ? styles.iconBoxSuccess
+    : styles.iconBoxInfo;
 
   return (
     <Modal
@@ -70,30 +130,25 @@ export const CustomAlertModal: React.FC = () => {
       onRequestClose={() => KitchyAlert.hide()}
     >
       <Animated.View style={[styles.backdrop, { opacity: fadeAnim }]}>
-        <View style={styles.card}>
+        <View style={styles.card} testID="custom-alert-card">
           {/* Cabecera con Icono de Estado */}
           <View style={styles.headerRow}>
-            <View
-              style={[
-                styles.iconBox,
-                isSuccessType ? styles.iconBoxSuccess : styles.iconBoxInfo,
-              ]}
-            >
-              <VectorIcon
-                name={isSuccessType ? 'check' : 'house'}
-                size={18}
-                color={isSuccessType ? Colors.primaryGreen : '#3B82F6'}
-              />
+            <View style={[styles.iconBox, iconBoxStyle]}>
+              <VectorIcon name={iconName} size={18} color={iconColor} />
             </View>
-            <Text style={styles.title}>{alertData.title}</Text>
+            <Text style={styles.title} testID="custom-alert-title">
+              {alertData.title}
+            </Text>
           </View>
 
           {/* Mensaje Descriptivo */}
           {alertData.message ? (
-            <Text style={styles.message}>{alertData.message}</Text>
+            <Text style={styles.message} testID="custom-alert-message">
+              {alertData.message}
+            </Text>
           ) : null}
 
-          {/* Bloque especial para Códigos y Enlaces (ej. Invitación Multihogar RF2) */}
+          {/* Bloque especial para Códigos y Enlaces (ej. Invitación Multihogar) */}
           {alertData.code || alertData.link ? (
             <View style={styles.specialContentCard}>
               {alertData.code ? (
@@ -127,12 +182,19 @@ export const CustomAlertModal: React.FC = () => {
           >
             {alertData.buttons?.map((btn, idx) => {
               const isCancel = btn.style === 'cancel';
+              const isDestructive = btn.style === 'destructive';
+              const btnSlug = btn.text.toLowerCase().replace(/[^a-z0-9]+/g, '-');
               return (
                 <TouchableOpacity
                   key={idx}
+                  testID={`custom-alert-btn-${btnSlug}`}
                   style={[
                     styles.actionButton,
-                    isCancel ? styles.buttonCancel : styles.buttonConfirm,
+                    isCancel
+                      ? styles.buttonCancel
+                      : isDestructive
+                      ? styles.buttonDestructive
+                      : styles.buttonConfirm,
                     alertData.buttons && alertData.buttons.length > 1
                       ? styles.actionButtonFlex
                       : styles.actionButtonFull,
@@ -143,7 +205,11 @@ export const CustomAlertModal: React.FC = () => {
                   <Text
                     style={[
                       styles.buttonText,
-                      isCancel ? styles.buttonTextCancel : styles.buttonTextConfirm,
+                      isCancel
+                        ? styles.buttonTextCancel
+                        : isDestructive
+                        ? styles.buttonTextDestructive
+                        : styles.buttonTextConfirm,
                     ]}
                   >
                     {btn.text}
@@ -197,6 +263,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 230, 118, 0.15)',
     borderWidth: 1,
     borderColor: 'rgba(0, 230, 118, 0.3)',
+  },
+  iconBoxDestructive: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+  },
+  iconBoxWarning: {
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.3)',
   },
   iconBoxInfo: {
     backgroundColor: 'rgba(59, 130, 246, 0.15)',
@@ -300,6 +376,14 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 6,
   },
+  buttonDestructive: {
+    backgroundColor: '#DC2626',
+    shadowColor: '#DC2626',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 6,
+  },
   buttonCancel: {
     backgroundColor: '#2A2A32',
     borderWidth: 1,
@@ -312,6 +396,9 @@ const styles = StyleSheet.create({
   },
   buttonTextConfirm: {
     color: '#000000',
+  },
+  buttonTextDestructive: {
+    color: '#FFFFFF',
   },
   buttonTextCancel: {
     color: '#D1D5DB',

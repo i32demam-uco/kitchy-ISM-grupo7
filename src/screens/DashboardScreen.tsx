@@ -5,23 +5,128 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
+  Pressable,
   Modal,
   Image,
 } from 'react-native';
-import { Colors } from '../theme';
+import { Colors, Typography } from '../theme';
 import { useAppDispatch, useAppSelector } from '../store';
 import { setActiveHouse } from '../store/authSlice';
-import { setInventory } from '../store/inventorySlice';
-import { setCurrentTab, setNfcModalVisible } from '../store/hardwareSlice';
+import {
+  setInventory,
+  updateInventoryItemQuantity,
+  updateInventoryItemDetails,
+  removeInventoryItem,
+  setSelectedPantryItemId,
+  confirmItemExpiration,
+} from '../store/inventorySlice';
+import { markHouseAsRead } from '../store/houseSocialSlice';
+import { addShoppingItem } from '../store/shoppingListSlice';
+import { setCurrentTab, setNfcModalVisible, setPagerScrollEnabled } from '../store/hardwareSlice';
 import { InventoryItem } from '../types';
 import { VectorIcon } from '../components/VectorIcon';
+import { ProductDetailSheet } from '../components/ProductDetailSheet';
+import { ProductDepletedModal } from '../components/ProductDepletedModal';
 import { ApiService } from '../services/api';
+import { KitchyApiClient } from '../services/kitchyApi';
+import { HapticFeedback } from '../services/haptics';
+import { determineCategory } from '../utils/inventoryGrouping';
+import { formatPantryQuantity } from '../utils/quantityFormatter';
+import { getProductImageUrl } from './ScannerScreen';
+import { SocialCollaborationService } from '../services/socialCollaborationService';
 
 export const DashboardScreen: React.FC = () => {
   const dispatch = useAppDispatch();
   const auth = useAppSelector((state) => state.auth);
   const inventoryItems = useAppSelector((state) => state.inventory.items);
+  const houseSocial = useAppSelector((state) => state.houseSocial);
+  const currentUserId = auth.userId || 'aleja';
+
   const [housePickerVisible, setHousePickerVisible] = useState(false);
+  const [selectedPantryItem, setSelectedPantryItem] = useState<InventoryItem | null>(null);
+  const [depletedItem, setDepletedItem] = useState<InventoryItem | null>(null);
+  const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
+
+  const confirmedExpirationItemIds = useAppSelector(
+    (state) => state.inventory.confirmedExpirationItemIds || []
+  );
+
+  // Notificaciones de caducidad de alimentos (para productos urgentes o que requieren fecha de caducidad)
+  const expiringNotificationItems = useMemo(() => {
+    return inventoryItems.filter((item) => {
+      // Si el usuario ya actualizó o confirmó la fecha de caducidad, se excluye de las notificaciones
+      if (
+        item.hasUserSetExpiration ||
+        item.expirationConfirmed ||
+        confirmedExpirationItemIds.includes(item.id)
+      ) {
+        return false;
+      }
+      return (
+        item.urgencyLevel === 'Red' ||
+        item.urgencyLevel === 'Amber' ||
+        (typeof item.remainingDays === 'number' && item.remainingDays <= 2)
+      );
+    });
+  }, [inventoryItems, confirmedExpirationItemIds]);
+
+  // Notificaciones compactas de mensajes de chat agrupadas por cada hogar
+  const compactChatNotifications = useMemo(() => {
+    const list: Array<{
+      houseId: string;
+      houseName: string;
+      unreadCount: number;
+      lastSenderName: string;
+      lastMessageText: string;
+    }> = [];
+
+    auth.availableHouses.forEach((house) => {
+      const houseMsgs = houseSocial.messages.filter((m) => m.houseId === house.id);
+      const lastRead = houseSocial.lastReadTimestamps[house.id];
+
+      const unread = houseMsgs.filter((m) => {
+        if (m.senderId === currentUserId) return false;
+        if (!lastRead) return true;
+        return new Date(m.createdAt) > new Date(lastRead);
+      });
+
+      if (unread.length > 0) {
+        const latestMsg = unread[unread.length - 1];
+        list.push({
+          houseId: house.id,
+          houseName: house.name,
+          unreadCount: unread.length,
+          lastSenderName: latestMsg.senderName || 'Compañero',
+          lastMessageText: latestMsg.content || 'Nuevo mensaje en el chat',
+        });
+      }
+    });
+
+    return list;
+  }, [auth.availableHouses, houseSocial.messages, houseSocial.lastReadTimestamps, currentUserId]);
+
+  const totalNotificationsCount =
+    expiringNotificationItems.length + compactChatNotifications.length;
+
+  const handleGoToSetExpiration = (item: InventoryItem) => {
+    HapticFeedback.selectionAsync();
+    setIsNotificationsModalOpen(false);
+    dispatch(setSelectedPantryItemId(item.id));
+    dispatch(setCurrentTab('pantry'));
+  };
+
+  const handleConfirmExpiration = (item: InventoryItem) => {
+    HapticFeedback.selectionAsync();
+    dispatch(confirmItemExpiration(item.id));
+  };
+
+  const handleGoToChat = (houseId: string) => {
+    HapticFeedback.selectionAsync();
+    setIsNotificationsModalOpen(false);
+    dispatch(setActiveHouse(houseId));
+    dispatch(markHouseAsRead(houseId));
+    dispatch(setCurrentTab('social'));
+  };
 
   // Requisito: Solo mostrar los 3 o 4 productos más recientemente añadidos (orden descendente)
   const recentPantryItems = useMemo(() => {
@@ -65,6 +170,94 @@ export const DashboardScreen: React.FC = () => {
     dispatch(setNfcModalVisible(true));
   };
 
+  const handlePressPantryItem = (item: InventoryItem) => {
+    HapticFeedback.selectionAsync();
+    setSelectedPantryItem(item);
+  };
+
+  const handleUpdateQuantity = (item: InventoryItem, newQuantity: number) => {
+    dispatch(updateInventoryItemQuantity({ id: item.id, quantity: newQuantity }));
+    if (selectedPantryItem && selectedPantryItem.id === item.id) {
+      setSelectedPantryItem({ ...selectedPantryItem, quantity: newQuantity });
+    }
+    if (auth.activeHouse?.id) {
+      KitchyApiClient.updateInventoryItem(auth.activeHouse.id, item.id, {
+        quantity: newQuantity,
+      });
+    }
+  };
+
+  const handleUpdateExpiration = (item: InventoryItem, newDate: string) => {
+    dispatch(
+      updateInventoryItemDetails({
+        id: item.id,
+        changes: {
+          expirationDate: newDate,
+          hasUserSetExpiration: true,
+          expirationConfirmed: true,
+        },
+      })
+    );
+    dispatch(confirmItemExpiration(item.id));
+    if (selectedPantryItem && selectedPantryItem.id === item.id) {
+      setSelectedPantryItem({
+        ...selectedPantryItem,
+        expirationDate: newDate,
+        hasUserSetExpiration: true,
+        expirationConfirmed: true,
+      });
+    }
+    if (auth.activeHouse?.id) {
+      KitchyApiClient.updateInventoryItem(auth.activeHouse.id, item.id, {
+        expirationDate: newDate,
+      });
+    }
+  };
+
+  const handleUpdateCategory = (item: InventoryItem, newCategory: string) => {
+    dispatch(updateInventoryItemDetails({ id: item.id, changes: { category: newCategory } }));
+    if (selectedPantryItem && selectedPantryItem.id === item.id) {
+      setSelectedPantryItem({ ...selectedPantryItem, category: newCategory });
+    }
+    if (auth.activeHouse?.id) {
+      KitchyApiClient.updateInventoryItem(auth.activeHouse.id, item.id, {
+        category: newCategory,
+      });
+    }
+  };
+
+  const handleDepleted = (item: InventoryItem) => {
+    setSelectedPantryItem(null);
+    setDepletedItem(item);
+  };
+
+  const handleConfirmDepletedAddShopping = (item: InventoryItem) => {
+    dispatch(removeInventoryItem(item.id));
+    dispatch(
+      addShoppingItem({
+        id: `depleted-${Date.now()}`,
+        houseId: auth.activeHouse?.id || 'a0000000-0000-0000-0000-000000000001',
+        name: item.name,
+        category: item.category || determineCategory(item),
+        quantity: 1,
+        unit: item.unit || 'ud',
+        isChecked: false,
+        source: 'Manual',
+        addedByUserId: auth.fullName || 'Usuario',
+        createdAt: new Date().toISOString(),
+      })
+    );
+    setDepletedItem(null);
+    HapticFeedback.impactAsync();
+  };
+
+  const handleDismissDepleted = () => {
+    if (depletedItem) {
+      dispatch(removeInventoryItem(depletedItem.id));
+    }
+    setDepletedItem(null);
+  };
+
   return (
     <View style={styles.container}>
       {/* 1. Header Superior */}
@@ -92,31 +285,57 @@ export const DashboardScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Avatares de miembros del hogar -> Acceso directo a Perfil */}
-        <TouchableOpacity
-          style={styles.avatarGroup}
-          onPress={() => dispatch(setCurrentTab('profile'))}
-          activeOpacity={0.8}
-        >
-          {auth.membersInActiveHouse.map((m, idx) => (
-            <View
-              key={m.id}
-              style={[
-                styles.avatarCircle,
-                { marginLeft: idx === 0 ? 0 : -8, zIndex: 10 - idx },
-                m.id === auth.userId && styles.avatarCurrent,
-              ]}
-            >
-              <Text style={styles.avatarText}>{m.avatar}</Text>
-            </View>
-          ))}
-        </TouchableOpacity>
+        {/* Acciones Superiores Derechas: Campanita de Notificaciones y Avatar */}
+        <View style={styles.headerRightActions}>
+          <TouchableOpacity
+            style={styles.notificationBellBtn}
+            onPress={() => {
+              HapticFeedback.selectionAsync();
+              setIsNotificationsModalOpen(true);
+            }}
+            activeOpacity={0.8}
+            testID="btn-dashboard-notifications"
+          >
+            <VectorIcon name="bell" size={20} color="#FFFFFF" />
+            {totalNotificationsCount > 0 && (
+              <View style={styles.bellBadge}>
+                <Text style={styles.bellBadgeText}>
+                  {totalNotificationsCount > 99 ? '99+' : totalNotificationsCount}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          {/* Avatar del usuario logueado -> Acceso directo a Mi Perfil */}
+          <TouchableOpacity
+            style={styles.userAvatarBtn}
+            onPress={() => dispatch(setCurrentTab('profile'))}
+            activeOpacity={0.8}
+            testID="btn-dashboard-profile"
+          >
+            {auth.avatarUrl ? (
+              <Image
+                source={{ uri: auth.avatarUrl }}
+                style={styles.userAvatarImg}
+                resizeMode="cover"
+              />
+            ) : (
+              <Text style={styles.userAvatarInitial}>
+                {auth.fullName ? auth.fullName.charAt(0).toUpperCase() : 'U'}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
         style={styles.scrollContent}
         contentContainerStyle={styles.scrollInner}
         showsVerticalScrollIndicator={false}
+        directionalLockEnabled={true}
+        nestedScrollEnabled={true}
+        keyboardShouldPersistTaps="handled"
+        scrollEventThrottle={16}
       >
         {/* 2. Sección Urgente (Carrusel Ámbar / Semáforo de Caducidad) */}
         <View style={styles.sectionHeaderRow}>
@@ -127,9 +346,30 @@ export const DashboardScreen: React.FC = () => {
         </View>
 
         <ScrollView
+          testID="urgent-scroll-view"
           horizontal
+          nestedScrollEnabled={true}
+          directionalLockEnabled={true}
+          keyboardShouldPersistTaps="handled"
+          scrollEventThrottle={16}
+          decelerationRate="fast"
           showsHorizontalScrollIndicator={false}
           style={styles.urgentScroll}
+          contentContainerStyle={styles.urgentScrollContent}
+          onStartShouldSetResponderCapture={() => {
+            dispatch(setPagerScrollEnabled(false));
+            return false;
+          }}
+          onMoveShouldSetResponderCapture={() => {
+            dispatch(setPagerScrollEnabled(false));
+            return false;
+          }}
+          onTouchStart={() => dispatch(setPagerScrollEnabled(false))}
+          onTouchEnd={() => dispatch(setPagerScrollEnabled(true))}
+          onTouchCancel={() => dispatch(setPagerScrollEnabled(true))}
+          onScrollBeginDrag={() => dispatch(setPagerScrollEnabled(false))}
+          onScrollEndDrag={() => dispatch(setPagerScrollEnabled(true))}
+          onMomentumScrollEnd={() => dispatch(setPagerScrollEnabled(true))}
         >
           {urgentItems.map((item) => {
             const isRed = item.urgencyLevel === 'Red';
@@ -179,8 +419,9 @@ export const DashboardScreen: React.FC = () => {
                   <Image
                     source={{
                       uri:
-                        item.imageUrl ||
-                        'https://images.unsplash.com/photo-1604503468506-a8da13d82791?w=200',
+                        item.imageUrl && !item.imageUrl.includes('photo-1546069901-ba9599a7e63c')
+                          ? item.imageUrl
+                          : getProductImageUrl(item.name, item.category),
                     }}
                     style={styles.foodRealImage}
                     resizeMode="cover"
@@ -190,7 +431,7 @@ export const DashboardScreen: React.FC = () => {
                       {item.name}
                     </Text>
                     <Text style={styles.urgentFoodDetails}>
-                      {item.quantity} {item.unit} • {item.location}
+                      {formatPantryQuantity(item.quantity, item.unit, item.name)} • {item.location}
                     </Text>
                   </View>
                 </View>
@@ -214,9 +455,12 @@ export const DashboardScreen: React.FC = () => {
           {recentPantryItems.map((item, index) => {
             const isLast = index === recentPantryItems.length - 1;
             return (
-              <View
+              <TouchableOpacity
                 key={`${item.id}-${index}`}
                 style={[styles.pantryRow, !isLast && styles.pantryRowBorder]}
+                onPress={() => handlePressPantryItem(item)}
+                activeOpacity={0.7}
+                testID={`pantry-item-${item.id}`}
               >
                 <View style={styles.pantryRowLeft}>
                   {/* Semáforo indicador de color */}
@@ -234,8 +478,9 @@ export const DashboardScreen: React.FC = () => {
                   <Image
                     source={{
                       uri:
-                        item.imageUrl ||
-                        'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200',
+                        item.imageUrl && !item.imageUrl.includes('photo-1546069901-ba9599a7e63c')
+                          ? item.imageUrl
+                          : getProductImageUrl(item.name, item.category),
                     }}
                     style={styles.pantryRealImage}
                     resizeMode="cover"
@@ -248,13 +493,16 @@ export const DashboardScreen: React.FC = () => {
                   </View>
                 </View>
 
-                {/* Cantidad */}
-                <View style={styles.pantryQuantityBadge}>
-                  <Text style={styles.pantryQuantityText}>
-                    {item.quantity} {item.unit}
-                  </Text>
+                {/* Cantidad y Acceso a Ficha Detallada */}
+                <View style={styles.pantryActionsWrap}>
+                  <View style={styles.pantryQuantityBadge}>
+                    <Text style={styles.pantryQuantityText}>
+                      {formatPantryQuantity(item.quantity, item.unit, item.name)}
+                    </Text>
+                  </View>
+                  <Text style={styles.pantryRowChevron}>›</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })}
         </View>
@@ -379,6 +627,233 @@ export const DashboardScreen: React.FC = () => {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      {/* Modal Ficha de Producto Detallada (Bottom Sheet con Glassmorphism) */}
+      {selectedPantryItem && (
+        <ProductDetailSheet
+          visible={!!selectedPantryItem}
+          item={selectedPantryItem}
+          onClose={() => setSelectedPantryItem(null)}
+          onUpdateQuantity={handleUpdateQuantity}
+          onUpdateExpiration={handleUpdateExpiration}
+          onDepleted={handleDepleted}
+          onUpdateCategory={handleUpdateCategory}
+        />
+      )}
+
+      {/* Modal de Alimento Agotado (Prompt para Lista de la Compra) */}
+      {depletedItem && (
+        <ProductDepletedModal
+          visible={!!depletedItem}
+          item={depletedItem}
+          onConfirmAddToList={handleConfirmDepletedAddShopping}
+          onDismiss={handleDismissDepleted}
+        />
+      )}
+
+      {/* Modal de Notificaciones (Avisos de Caducidad y Chat Compacto de Hogares) */}
+      <Modal
+        visible={isNotificationsModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsNotificationsModalOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setIsNotificationsModalOpen(false)}
+            testID="backdrop-notifications-modal"
+          />
+          <View style={styles.notificationsModalContent}>
+            {/* Header del Modal */}
+            <View style={styles.notifModalHeader}>
+              <View style={styles.notifModalHeaderLeft}>
+                <View style={styles.notifModalIconBadge}>
+                  <VectorIcon name="bell" size={18} color={Colors.primaryGreen} />
+                </View>
+                <View>
+                  <Text style={styles.notifModalTitle}>Notificaciones</Text>
+                  <Text style={styles.notifModalSubtitle}>
+                    Avisos de despensa y mensajes de hogar
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => setIsNotificationsModalOpen(false)}
+                style={styles.notifModalCloseBtn}
+                activeOpacity={0.7}
+                testID="btn-close-notifications-modal"
+              >
+                <Text style={styles.notifModalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              testID="notifications-modal-scroll"
+              style={styles.notifModalScroll}
+              contentContainerStyle={styles.notifModalScrollInner}
+              nestedScrollEnabled={true}
+              keyboardShouldPersistTaps="handled"
+              bounces={true}
+              overScrollMode="always"
+              scrollEventThrottle={16}
+              showsVerticalScrollIndicator={true}
+            >
+              {totalNotificationsCount === 0 ? (
+                <View style={styles.notifEmptyState}>
+                  <View style={styles.notifEmptyIconBadge}>
+                    <VectorIcon name="check" size={28} color={Colors.primaryGreen} />
+                  </View>
+                  <Text style={styles.notifEmptyTitle}>Todo al día</Text>
+                  <Text style={styles.notifEmptySubtitle}>
+                    No tienes alimentos por caducar ni mensajes pendientes en tus hogares.
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  {/* SECCIÓN 1: AVISOS DE CADUCIDAD */}
+                  {expiringNotificationItems.length > 0 && (
+                    <View style={styles.notifSection}>
+                      <View style={styles.notifSectionHeaderRow}>
+                        <VectorIcon name="clock" size={13} color={Colors.urgencyAmber} />
+                        <Text style={styles.notifSectionTitle}>AVISOS DE CADUCIDAD</Text>
+                        <View style={styles.notifCountBadge}>
+                          <Text style={styles.notifCountBadgeText}>
+                            {expiringNotificationItems.length}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.notifSectionHint}>
+                        Indica la fecha exacta para organizar tu consumo y evitar desperdicio.
+                      </Text>
+
+                      {expiringNotificationItems.map((item) => {
+                        const isRed = item.urgencyLevel === 'Red' || item.remainingDays <= 1;
+                        return (
+                          <View key={`exp-${item.id}`} style={styles.notifItemCard}>
+                            <View style={styles.notifItemMainRow}>
+                              {item.imageUrl ? (
+                                <Image
+                                  source={{ uri: item.imageUrl }}
+                                  style={styles.notifItemImg}
+                                  resizeMode="cover"
+                                />
+                              ) : (
+                                <View style={styles.notifItemImgPlaceholder}>
+                                  <VectorIcon name="image" size={16} color="#9CA3AF" />
+                                </View>
+                              )}
+                              <View style={styles.notifItemTextWrap}>
+                                <Text style={styles.notifItemName} numberOfLines={1}>
+                                  {item.name}
+                                </Text>
+                                <Text style={styles.notifItemLoc}>
+                                  {item.location || 'En la despensa'} • {formatPantryQuantity(item.quantity, item.unit, item.name)}
+                                </Text>
+                                <View
+                                  style={[
+                                    styles.notifUrgencyPill,
+                                    isRed ? styles.notifUrgencyPillRed : styles.notifUrgencyPillAmber,
+                                  ]}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.notifUrgencyText,
+                                      isRed ? styles.notifUrgencyTextRed : styles.notifUrgencyTextAmber,
+                                    ]}
+                                  >
+                                    {isRed ? 'Caduca en 24 h' : 'Caduca en 48 h'}
+                                  </Text>
+                                </View>
+                              </View>
+                            </View>
+
+                            <View style={styles.notifItemActionsRow}>
+                              <TouchableOpacity
+                                style={styles.notifConfirmBtn}
+                                onPress={() => handleConfirmExpiration(item)}
+                                activeOpacity={0.8}
+                                testID={`btn-notif-confirm-${item.id}`}
+                              >
+                                <VectorIcon name="check" size={13} color={Colors.primaryGreen} />
+                                <Text style={styles.notifConfirmBtnText}>Confirmar</Text>
+                              </TouchableOpacity>
+
+                              <TouchableOpacity
+                                style={styles.notifSetDateBtn}
+                                onPress={() => handleGoToSetExpiration(item)}
+                                activeOpacity={0.8}
+                                testID={`btn-notif-set-expiration-${item.id}`}
+                              >
+                                <VectorIcon name="calendar" size={13} color="#000000" />
+                                <Text style={styles.notifSetDateBtnText}>
+                                  Poner fecha de caducidad
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+
+                  {/* SECCIÓN 2: MENSAJES DE HOGARES (COMPACTO) */}
+                  {compactChatNotifications.length > 0 && (
+                    <View style={styles.notifSection}>
+                      <View style={styles.notifSectionHeaderRow}>
+                        <VectorIcon name="users" size={13} color={Colors.primaryGreen} />
+                        <Text style={styles.notifSectionTitle}>MENSAJES EN TUS HOGARES</Text>
+                        <View style={styles.notifCountBadge}>
+                          <Text style={styles.notifCountBadgeText}>
+                            {compactChatNotifications.length}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.notifSectionHint}>
+                        Notificaciones compactas agrupadas para no saturar tu bandeja.
+                      </Text>
+
+                      {compactChatNotifications.map((chatNotif) => (
+                        <View key={`chat-${chatNotif.houseId}`} style={styles.notifChatCard}>
+                          <View style={styles.notifChatTopRow}>
+                            <View style={styles.notifChatHouseInfo}>
+                              <VectorIcon name="house" size={15} color={Colors.primaryGreen} />
+                              <Text style={styles.notifChatHouseName}>
+                                {chatNotif.houseName}
+                              </Text>
+                            </View>
+                            <View style={styles.notifChatBadge}>
+                              <Text style={styles.notifChatBadgeText}>
+                                {chatNotif.unreadCount}{' '}
+                                {chatNotif.unreadCount === 1 ? 'nuevo' : 'nuevos'}
+                              </Text>
+                            </View>
+                          </View>
+
+                          <Text style={styles.notifChatSnippet} numberOfLines={2}>
+                            <Text style={styles.notifChatSender}>{chatNotif.lastSenderName}: </Text>
+                            {chatNotif.lastMessageText}
+                          </Text>
+
+                          <TouchableOpacity
+                            style={styles.notifChatActionBtn}
+                            onPress={() => handleGoToChat(chatNotif.houseId)}
+                            activeOpacity={0.8}
+                            testID={`btn-notif-chat-${chatNotif.houseId}`}
+                          >
+                            <VectorIcon name="users" size={13} color={Colors.primaryGreen} />
+                            <Text style={styles.notifChatActionBtnText}>Ver conversación</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -432,28 +907,64 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontWeight: '500',
   },
-  avatarGroup: {
+  headerRightActions: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
     marginTop: 4,
   },
-  avatarCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#2A2A32',
+  notificationBellBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#1E1E24',
+    borderWidth: 1.2,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: Colors.background,
+    position: 'relative',
   },
-  avatarCurrent: {
-    borderColor: Colors.primaryGreen,
+  bellBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: Colors.primaryGreen,
+    borderRadius: 9,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#121214',
   },
-  avatarText: {
-    fontSize: 11,
+  bellBadgeText: {
+    color: '#000000',
+    fontSize: 10,
+    fontWeight: '800',
+    fontFamily: Typography.bodySemiBold,
+  },
+  userAvatarBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#000000',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 4,
+    overflow: 'hidden',
+  },
+  userAvatarImg: {
+    width: '100%',
+    height: '100%',
+  },
+  userAvatarInitial: {
+    fontSize: 15,
     fontWeight: '700',
     color: '#FFFFFF',
+    fontFamily: Typography.headingSemiBold,
   },
   scrollContent: {
     flex: 1,
@@ -485,7 +996,10 @@ const styles = StyleSheet.create({
   },
   urgentScroll: {
     marginHorizontal: -20,
+  },
+  urgentScrollContent: {
     paddingHorizontal: 20,
+    paddingVertical: 4,
   },
   urgentCard: {
     width: 250,
@@ -631,6 +1145,17 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#8E8E93',
     marginTop: 2,
+  },
+  pantryActionsWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  pantryRowChevron: {
+    color: '#6B7280',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginLeft: 4,
   },
   pantryQuantityBadge: {
     backgroundColor: '#23232A',
@@ -825,6 +1350,313 @@ const styles = StyleSheet.create({
     color: Colors.primaryGreen,
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  notificationsModalContent: {
+    width: '100%',
+    maxHeight: '82%',
+    backgroundColor: '#1C1C1E',
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1.2,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.6,
+    shadowRadius: 24,
+    elevation: 16,
+  },
+  notifModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  notifModalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  notifModalIconBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(0, 230, 118, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  notifModalTitle: {
+    fontSize: 18,
+    fontFamily: Typography.headingSemiBold,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  notifModalSubtitle: {
+    fontSize: 11.5,
+    fontFamily: Typography.body,
+    color: '#9CA3AF',
+    marginTop: 2,
+  },
+  notifModalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  notifModalCloseText: {
+    color: '#9CA3AF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  notifModalScroll: {
+    marginTop: 12,
+    flexGrow: 0,
+    flexShrink: 1,
+  },
+  notifModalScrollInner: {
+    paddingBottom: 16,
+    flexGrow: 1,
+  },
+  notifEmptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 36,
+    paddingHorizontal: 20,
+  },
+  notifEmptyIconBadge: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(0, 230, 118, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  notifEmptyTitle: {
+    fontSize: 17,
+    fontFamily: Typography.headingSemiBold,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginBottom: 6,
+  },
+  notifEmptySubtitle: {
+    fontSize: 13,
+    fontFamily: Typography.body,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  notifSection: {
+    marginBottom: 20,
+  },
+  notifSectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  notifSectionTitle: {
+    fontSize: 12,
+    fontFamily: Typography.headingSemiBold,
+    fontWeight: '800',
+    color: '#E5E7EB',
+    letterSpacing: 0.5,
+  },
+  notifCountBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 1,
+  },
+  notifCountBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10.5,
+    fontWeight: '700',
+  },
+  notifSectionHint: {
+    fontSize: 11.5,
+    fontFamily: Typography.body,
+    color: '#9CA3AF',
+    marginBottom: 12,
+  },
+  notifItemCard: {
+    backgroundColor: '#26262E',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  notifItemMainRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  notifItemImg: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#1E1E24',
+    marginRight: 12,
+  },
+  notifItemImgPlaceholder: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#1E1E24',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  notifItemTextWrap: {
+    flex: 1,
+  },
+  notifItemName: {
+    fontSize: 14.5,
+    fontFamily: Typography.headingSemiBold,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  notifItemLoc: {
+    fontSize: 11.5,
+    fontFamily: Typography.body,
+    color: '#9CA3AF',
+    marginTop: 2,
+    marginBottom: 4,
+  },
+  notifUrgencyPill: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  notifUrgencyPillRed: {
+    backgroundColor: 'rgba(239, 68, 68, 0.18)',
+  },
+  notifUrgencyPillAmber: {
+    backgroundColor: 'rgba(245, 158, 11, 0.18)',
+  },
+  notifUrgencyText: {
+    fontSize: 10.5,
+    fontFamily: Typography.bodySemiBold,
+    fontWeight: '700',
+  },
+  notifUrgencyTextRed: {
+    color: '#EF4444',
+  },
+  notifUrgencyTextAmber: {
+    color: '#F59E0B',
+  },
+  notifItemActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  notifConfirmBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0, 230, 118, 0.12)',
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 230, 118, 0.3)',
+  },
+  notifConfirmBtnText: {
+    color: Colors.primaryGreen,
+    fontSize: 12,
+    fontFamily: Typography.bodySemiBold,
+    fontWeight: '700',
+  },
+  notifSetDateBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: Colors.primaryGreen,
+    paddingVertical: 9,
+    borderRadius: 10,
+  },
+  notifSetDateBtnText: {
+    color: '#000000',
+    fontSize: 12,
+    fontFamily: Typography.bodySemiBold,
+    fontWeight: '800',
+  },
+  notifChatCard: {
+    backgroundColor: '#26262E',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  notifChatTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  notifChatHouseInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  notifChatHouseName: {
+    fontSize: 14,
+    fontFamily: Typography.headingSemiBold,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  notifChatBadge: {
+    backgroundColor: 'rgba(0, 230, 118, 0.18)',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 230, 118, 0.35)',
+  },
+  notifChatBadgeText: {
+    color: Colors.primaryGreen,
+    fontSize: 10.5,
+    fontFamily: Typography.bodySemiBold,
+    fontWeight: '800',
+  },
+  notifChatSnippet: {
+    fontSize: 12,
+    fontFamily: Typography.body,
+    color: '#9CA3AF',
+    lineHeight: 17,
+    marginBottom: 12,
+  },
+  notifChatSender: {
+    color: '#D1D5DB',
+    fontWeight: '700',
+  },
+  notifChatActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0, 230, 118, 0.12)',
+    paddingVertical: 9,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 230, 118, 0.3)',
+  },
+  notifChatActionBtnText: {
+    color: Colors.primaryGreen,
+    fontSize: 12,
+    fontFamily: Typography.bodySemiBold,
+    fontWeight: '700',
   },
 });
 

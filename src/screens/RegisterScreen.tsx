@@ -86,14 +86,14 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
         })
       );
       KitchyAlert.show(
-        '¡Registro Exitoso!',
-        `Bienvenido a Kitchy, ${response.fullName}. Se ha vinculado tu cuenta al hogar predeterminado.`
+        '¡Registro completado!',
+        `Bienvenido a Kitchy, ${response.fullName}. Tu cuenta está lista para usarse.`
       );
       onRegisterSuccess();
     } catch {
       KitchyAlert.show(
-        'Error en el Registro',
-        'No fue posible completar el registro. Comprueba tu conexión o utiliza otro correo.'
+        'Error en el registro',
+        'No fue posible completar el registro. Por favor, comprueba tus datos o inténtalo de nuevo.'
       );
     } finally {
       setIsLoading(false);

@@ -135,5 +135,22 @@ namespace Kitchy.API.Controllers
 
             return Ok(new { Success = true, Message = "Product discarded and added to collaborative shopping list." });
         }
+
+        [HttpPost("{id}/consume")]
+        [HttpPost("consume/{id}")]
+        public async Task<ActionResult<InventoryItemDto>> ConsumeItem(
+            Guid id,
+            [FromQuery] Guid houseId,
+            [FromBody] ConsumeProductRequestDto dto)
+        {
+            if (!await ValidateHouseAccessAsync(_houseRepo, houseId)) return Forbid();
+
+            var quantity = dto?.Quantity > 0 ? dto.Quantity : 1;
+            var updated = await _inventoryService.ConsumeItemAsync(houseId, CurrentUserId, id, quantity);
+            if (updated == null) return NotFound();
+
+            return Ok(updated);
+        }
     }
 }
+

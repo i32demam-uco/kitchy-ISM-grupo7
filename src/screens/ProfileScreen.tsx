@@ -23,6 +23,8 @@ export const ProfileScreen: React.FC = () => {
 
   const [isDataModalOpen, setIsDataModalOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [isFaqModalOpen, setIsFaqModalOpen] = useState(false);
+  const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
 
   // Estados para "Mis Datos"
   const [editName, setEditName] = useState(auth.fullName);
@@ -32,6 +34,30 @@ export const ProfileScreen: React.FC = () => {
   const [currentPwd, setCurrentPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
   const [confirmNewPwd, setConfirmNewPwd] = useState('');
+
+  const handleChangeAvatar = async () => {
+    try {
+      const { launchImageLibrary } = require('react-native-image-picker');
+      launchImageLibrary(
+        {
+          mediaType: 'photo',
+          quality: 0.8,
+        },
+        (response: any) => {
+          if (response.didCancel || !response.assets || response.assets.length === 0) {
+            return;
+          }
+          const pickedUri = response.assets[0].uri;
+          if (pickedUri) {
+            dispatch(updateUserProfile({ avatarUrl: pickedUri }));
+            KitchyAlert.show('Avatar actualizado', 'Tu foto de perfil se ha guardado correctamente.');
+          }
+        }
+      );
+    } catch {
+      KitchyAlert.show('Aviso', 'No fue posible abrir la galería de imágenes.');
+    }
+  };
 
   const handleSaveProfileData = () => {
     if (!editName.trim()) {
@@ -84,20 +110,21 @@ export const ProfileScreen: React.FC = () => {
 
     KitchyAlert.show(
       'Contraseña actualizada',
-      'Tu contraseña ha sido cambiada y encriptada exitosamente con BCrypt.'
+      'Tu contraseña se ha cambiado correctamente.'
     );
   };
 
   const handleLogout = async () => {
     KitchyAlert.show(
-      '¿Cerrar Sesión?',
-      'Se destruirá el token JWT seguro de este dispositivo. Tendrás que volver a autenticarte.',
+      '¿Cerrar sesión?',
+      '¿Estás seguro de que quieres cerrar sesión?',
       [
         { text: 'Cancelar', style: 'cancel' },
         {
-          text: 'Cerrar Sesión',
+          text: 'Cerrar sesión',
           style: 'destructive',
           onPress: async () => {
+            dispatch(setCurrentTab('home'));
             await ApiService.logout();
             dispatch(logout());
           },
@@ -128,7 +155,12 @@ export const ProfileScreen: React.FC = () => {
       >
         {/* Tarjeta de Identidad del Usuario */}
         <View style={styles.identityCard}>
-          <View style={styles.avatarWrap}>
+          <TouchableOpacity
+            style={styles.avatarWrap}
+            onPress={handleChangeAvatar}
+            activeOpacity={0.8}
+            testID="btn-change-avatar"
+          >
             {auth.avatarUrl ? (
               <Image
                 source={{ uri: auth.avatarUrl }}
@@ -142,11 +174,21 @@ export const ProfileScreen: React.FC = () => {
                 </Text>
               </View>
             )}
-            <View style={styles.onlineStatusDot} />
-          </View>
+            <View style={styles.avatarEditIconBadge}>
+              <VectorIcon name="camera" size={12} color="#000000" />
+            </View>
+          </TouchableOpacity>
 
           <Text style={styles.profileName}>{auth.fullName}</Text>
           <Text style={styles.profileEmail}>{auth.email}</Text>
+
+          <TouchableOpacity
+            style={styles.changePhotoBtn}
+            onPress={handleChangeAvatar}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.changePhotoBtnText}>Cambiar foto de perfil</Text>
+          </TouchableOpacity>
 
           {/* Badge del Hogar Activo */}
           <View style={styles.houseBadge}>
@@ -197,7 +239,52 @@ export const ProfileScreen: React.FC = () => {
             <View>
               <Text style={styles.actionRowTitle}>Cambiar Contraseña</Text>
               <Text style={styles.actionRowDesc}>
-                Actualiza tu clave con encriptación BCrypt
+                Actualiza tu clave de acceso de forma segura
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.actionRowChevron}>›</Text>
+        </TouchableOpacity>
+
+        {/* Sección de Información y Ayuda */}
+        <Text style={styles.sectionHeader}>INFORMACIÓN Y AYUDA</Text>
+
+        {/* Botón: Preguntas Frecuentes (FAQ) */}
+        <TouchableOpacity
+          style={styles.actionRowCard}
+          onPress={() => setIsFaqModalOpen(true)}
+          activeOpacity={0.75}
+          testID="btn-profile-faq"
+        >
+          <View style={styles.actionRowLeft}>
+            <View style={styles.actionIconBox}>
+              <Text style={styles.actionIconSymbol}>?</Text>
+            </View>
+            <View>
+              <Text style={styles.actionRowTitle}>Preguntas Frecuentes (FAQ)</Text>
+              <Text style={styles.actionRowDesc}>
+                Escáner OCR, semáforo de caducidad y multihogar
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.actionRowChevron}>›</Text>
+        </TouchableOpacity>
+
+        {/* Botón: Política de Privacidad */}
+        <TouchableOpacity
+          style={styles.actionRowCard}
+          onPress={() => setIsPrivacyModalOpen(true)}
+          activeOpacity={0.75}
+          testID="btn-profile-privacy"
+        >
+          <View style={styles.actionRowLeft}>
+            <View style={styles.actionIconBox}>
+              <Text style={styles.actionIconSymbol}>§</Text>
+            </View>
+            <View>
+              <Text style={styles.actionRowTitle}>Política de Privacidad</Text>
+              <Text style={styles.actionRowDesc}>
+                Protección de datos personales y privacidad por hogar
               </Text>
             </View>
           </View>
@@ -206,11 +293,11 @@ export const ProfileScreen: React.FC = () => {
 
         {/* Información del Sistema Kitchy */}
         <View style={styles.systemInfoCard}>
-          <Text style={styles.systemInfoTitle}>Seguridad y Criptografía</Text>
+          <Text style={styles.systemInfoTitle}>Seguridad y Privacidad</Text>
           <Text style={styles.systemInfoText}>
-            • Algoritmo de Hashing: BCrypt (Cost Factor 11){'\n'}
-            • Protocolo: Bearer JWT HMAC-SHA256{'\n'}
-            • Aislamiento RLS: Supabase PostgreSQL (house_id)
+            • Cifrado seguro de credenciales y datos{'\n'}
+            • Sincronización en tiempo real{'\n'}
+            • Aislamiento y privacidad por hogar
           </Text>
         </View>
 
@@ -219,6 +306,7 @@ export const ProfileScreen: React.FC = () => {
           style={styles.logoutButton}
           onPress={handleLogout}
           activeOpacity={0.85}
+          testID="btn-profile-logout"
         >
           <Text style={styles.logoutButtonText}>Cerrar Sesión</Text>
         </TouchableOpacity>
@@ -346,6 +434,128 @@ export const ProfileScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Modal: Preguntas Frecuentes (FAQ) */}
+      <Modal
+        visible={isFaqModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsFaqModalOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, styles.infoModalCard]}>
+            <Text style={styles.modalTitle}>Preguntas Frecuentes (FAQ)</Text>
+            <Text style={styles.modalSubtitle}>
+              Guía de uso y funcionamiento del ecosistema Kitchy
+            </Text>
+
+            <ScrollView style={styles.infoScroll} showsVerticalScrollIndicator={false}>
+              <View style={styles.faqItem}>
+                <Text style={styles.faqQuestion}>¿Cómo funciona el escaneo OCR de tickets?</Text>
+                <Text style={styles.faqAnswer}>
+                  Kitchy utiliza reconocimiento óptico de caracteres (OCR) sobre la imagen capturada para extraer artículos, cantidades y precios. Si el formato coincide con tickets habituales de supermercado, se clasifican automáticamente en tu despensa.
+                </Text>
+              </View>
+
+              <View style={styles.faqItem}>
+                <Text style={styles.faqQuestion}>¿Cómo se calcula el semáforo de caducidad?</Text>
+                <Text style={styles.faqAnswer}>
+                  Los alimentos en estado crítico (menos de 48 horas) se marcan en rojo o ámbar. El algoritmo asigna fechas estimadas según el tipo de producto (carne 1-2 días, lácteos 3-5 días, no perecederos 14+ días), siempre editables a mano.
+                </Text>
+              </View>
+
+              <View style={styles.faqItem}>
+                <Text style={styles.faqQuestion}>¿Cómo se sincroniza el inventario entre compañeros?</Text>
+                <Text style={styles.faqAnswer}>
+                  Cada hogar sincroniza su inventario en tiempo real. Cualquier alta, modificación o consumo de alimentos se actualiza inmediatamente en los dispositivos de todos los miembros del hogar.
+                </Text>
+              </View>
+
+              <View style={styles.faqItem}>
+                <Text style={styles.faqQuestion}>¿Cómo funciona la geovalla de compra urgente?</Text>
+                <Text style={styles.faqAnswer}>
+                  Cuando marcas la lista como urgente y te aproximas a menos de 150 metros de un supermercado abierto, Kitchy te envía un aviso para que puedas comprar lo que falta sin duplicar gastos.
+                </Text>
+              </View>
+
+              <View style={styles.faqItem}>
+                <Text style={styles.faqQuestion}>¿Cómo añado alimentos a la lista de la compra?</Text>
+                <Text style={styles.faqAnswer}>
+                  Puedes añadir artículos escribiendo su nombre en el campo de texto y pulsando Enter o el botón (+), o utilizar el micrófono del teclado de tu dispositivo para dictarlo rápidamente.
+                </Text>
+              </View>
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.modalBtn, styles.modalBtnSave, { marginTop: 14 }]}
+              onPress={() => setIsFaqModalOpen(false)}
+            >
+              <Text style={styles.modalBtnSaveText}>Cerrar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal: Política de Privacidad */}
+      <Modal
+        visible={isPrivacyModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsPrivacyModalOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, styles.infoModalCard]}>
+            <Text style={styles.modalTitle}>Política de Privacidad y RGPD</Text>
+            <Text style={styles.modalSubtitle}>
+              Compromiso de protección de datos personales de Kitchy ISM
+            </Text>
+
+            <ScrollView style={styles.infoScroll} showsVerticalScrollIndicator={false}>
+              <View style={styles.privacySection}>
+                <Text style={styles.privacyHeading}>1. Aislamiento Estricto por Hogar</Text>
+                <Text style={styles.privacyBody}>
+                  Tus datos de despensa, compras y mensajes están protegidos y aislados, garantizando que únicamente los miembros autorizados de tu hogar tengan acceso.
+                </Text>
+              </View>
+
+              <View style={styles.privacySection}>
+                <Text style={styles.privacyHeading}>2. Criptografía y Almacenamiento Seguro</Text>
+                <Text style={styles.privacyBody}>
+                  Las contraseñas se almacenan mediante algoritmos de cifrado irreversible y seguro. Todas las comunicaciones con el servidor emplean cifrado seguro TLS de extremo a extremo.
+                </Text>
+              </View>
+
+              <View style={styles.privacySection}>
+                <Text style={styles.privacyHeading}>3. Privacidad de Geolocalización (Zero-Tracking)</Text>
+                <Text style={styles.privacyBody}>
+                  La comprobación de cercanía a supermercados se realiza localmente en el dispositivo. Kitchy nunca almacena tu historial de ubicaciones ni envía tus coordenadas GPS al servidor.
+                </Text>
+              </View>
+
+              <View style={styles.privacySection}>
+                <Text style={styles.privacyHeading}>4. Datos de Audio y Reconocimiento de Voz</Text>
+                <Text style={styles.privacyBody}>
+                  El micrófono únicamente se activa cuando inicias la captura conscientemente. Las transcripciones no se guardan como archivos de audio ni se comparten con terceros.
+                </Text>
+              </View>
+
+              <View style={styles.privacySection}>
+                <Text style={styles.privacyHeading}>5. Derechos del Usuario (ARCO / RGPD)</Text>
+                <Text style={styles.privacyBody}>
+                  Tienes derecho a acceder, rectificar o solicitar la eliminación total de tu cuenta y datos en cualquier momento desde esta pantalla o contactando con el administrador.
+                </Text>
+              </View>
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.modalBtn, styles.modalBtnSave, { marginTop: 14 }]}
+              onPress={() => setIsPrivacyModalOpen(false)}
+            >
+              <Text style={styles.modalBtnSaveText}>Entendido</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -434,6 +644,33 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '800',
     color: Colors.primaryGreen,
+  },
+  avatarEditIconBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: Colors.primaryGreen,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#1C1C1E',
+  },
+  changePhotoBtn: {
+    marginTop: 6,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0, 230, 118, 0.12)',
+  },
+  changePhotoBtnText: {
+    fontSize: 12,
+    color: Colors.primaryGreen,
+    fontFamily: Typography.bodySemiBold,
+    fontWeight: '600',
   },
   onlineStatusDot: {
     position: 'absolute',
@@ -647,6 +884,55 @@ const styles = StyleSheet.create({
     color: '#000000',
     fontSize: 13.5,
     fontWeight: '800',
+  },
+  infoModalCard: {
+    maxHeight: '80%',
+  },
+  infoScroll: {
+    maxHeight: 380,
+    marginTop: 8,
+  },
+  faqItem: {
+    backgroundColor: '#26262E',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  faqQuestion: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    fontFamily: Typography.bodySemiBold,
+    marginBottom: 6,
+  },
+  faqAnswer: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    lineHeight: 18,
+    fontFamily: Typography.body,
+  },
+  privacySection: {
+    backgroundColor: '#26262E',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  privacyHeading: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.primaryGreen,
+    fontFamily: Typography.bodySemiBold,
+    marginBottom: 6,
+  },
+  privacyBody: {
+    fontSize: 12,
+    color: '#E5E7EB',
+    lineHeight: 18,
+    fontFamily: Typography.body,
   },
 });
 

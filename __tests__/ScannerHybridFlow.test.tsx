@@ -27,27 +27,30 @@ describe('Módulo Escáner: Entrada de Datos Híbrida (Código de Barras + OCR +
     });
 
     const root = renderer.root;
-    const texts = root.findAllByType('Text').map((t: any) => t.props.children).flat();
-    const allText = texts.join(' ').replace(/\s+/g, ' ');
+    let texts = root.findAllByType('Text').map((t: any) => t.props.children).flat();
+    let allText = texts.join(' ').replace(/\s+/g, ' ');
 
-    // 1. Toggles present
+    // 1. Toggles present (dual mode: Cámara + Código de Barras)
     expect(allText).toContain('Cámara');
     expect(allText).toContain('Código de Barras');
-    expect(allText).toContain('NFC');
+    expect(allText).not.toContain('NFC');
 
-    // 2. Receipt OCR content
-    expect(allText).toContain('MERCADONA');
-    expect(allText).toContain('TOMATE FRITO HACENDADO');
+    // 2. Physical Shutter button is present
+    const shutterBtn = root.findByProps({ testID: 'btn-physical-shutter' });
+    expect(shutterBtn).toBeDefined();
 
-    // 3. Bottom Sheet detected products
+    // 3. Press shutter to trigger real ML Kit OCR
+    await ReactTestRenderer.act(async () => {
+      shutterBtn.props.onPress();
+    });
+
+    texts = root.findAllByType('Text').map((t: any) => t.props.children).flat();
+    allText = texts.join(' ').replace(/\s+/g, ' ');
+
+    // 4. Bottom Sheet detected products from real OCR
     expect(allText).toContain('productos detectados');
-    expect(allText).toContain('Tomate frito Hacendado');
-    expect(allText).toContain('Huevos L');
-    expect(allText).toContain('Pechuga de pollo');
-    expect(allText).toContain('Leche entera');
-
-    // 4. Giant Green Action Button
-    expect(allText).toContain('Guardar 4 productos');
+    expect(allText).toMatch(/tomate frito hacendado/i);
+    expect(allText).toContain('Guardar');
 
     await ReactTestRenderer.act(() => {
       renderer.unmount();

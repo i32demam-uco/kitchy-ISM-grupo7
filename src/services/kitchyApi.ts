@@ -38,7 +38,14 @@ export class KitchyApiClient {
   static async updateInventoryItem(
     houseId: string,
     itemId: string,
-    changes: { quantity?: number; expirationDate?: string; location?: string; name?: string }
+    changes: {
+      quantity?: number;
+      expirationDate?: string;
+      location?: string;
+      name?: string;
+      category?: string;
+      imageUrl?: string;
+    }
   ): Promise<boolean> {
     try {
       const res = await fetch(`${API_BASE_URL}/inventory/update?houseId=${houseId}&id=${itemId}`, {

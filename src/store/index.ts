@@ -5,6 +5,7 @@ import inventoryReducer from './inventorySlice';
 import shoppingListReducer from './shoppingListSlice';
 import recipesReducer from './recipesSlice';
 import hardwareReducer from './hardwareSlice';
+import houseSocialReducer from './houseSocialSlice';
 
 export const store = configureStore({
   reducer: {
@@ -13,6 +14,7 @@ export const store = configureStore({
     shoppingList: shoppingListReducer,
     recipes: recipesReducer,
     hardware: hardwareReducer,
+    houseSocial: houseSocialReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

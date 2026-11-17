@@ -32,7 +32,10 @@ namespace Kitchy.Core.Interfaces
         Task<List<Recipe>> GetAvailableRecipesAsync(Guid? houseId);
         Task<Recipe?> GetByIdAsync(Guid id);
         Task<Recipe> AddAsync(Recipe recipe);
+        Task<Recipe?> UpdateAsync(Recipe recipe);
         Task<bool> DeleteAsync(Guid id);
+        Task<bool> ToggleFavoriteAsync(Guid recipeId, string userId);
+        Task<HashSet<Guid>> GetUserFavoriteRecipeIdsAsync(string userId);
     }
 
     public interface IHouseRepository
@@ -43,6 +46,7 @@ namespace Kitchy.Core.Interfaces
         Task<House> CreateHouseAsync(House house, string ownerUserId);
         Task<bool> AddUserToHouseAsync(string userId, Guid houseId, string role);
         Task<bool> IsUserInHouseAsync(string userId, Guid houseId);
+        Task<House?> UpdateHouseAsync(House house);
     }
 
     public interface IMasterProductRepository
@@ -66,4 +70,22 @@ namespace Kitchy.Core.Interfaces
         Task<User> UpdateAsync(User user);
         Task<bool> ExistsByEmailAsync(string email);
     }
+
+    public interface IHouseMessageRepository
+    {
+        Task<List<HouseMessage>> GetMessagesAsync(Guid houseId, DateTime? cursor, int limit = 30);
+        Task<HouseMessage> AddMessageAsync(HouseMessage message);
+        Task<List<UserHouse>> GetHouseMembersAsync(Guid houseId);
+    }
+
+    public interface IHouseCollaborationNotifier
+    {
+        Task BroadcastChatMessageAsync(Guid houseId, DTOs.HouseMessageDto message);
+        Task BroadcastInventoryDeltaAsync(Guid houseId, DTOs.InventoryDeltaDto delta);
+        Task BroadcastMemberPresenceAsync(Guid houseId, List<DTOs.HouseMemberPresenceDto> members);
+        Task BroadcastShoppingListUrgencyChangedAsync(Guid houseId, DTOs.ShoppingListUrgencyStatusDto status);
+        Task BroadcastShoppingListReconciledAsync(Guid houseId, DTOs.ReconciliationResultDto result);
+    }
 }
+
+

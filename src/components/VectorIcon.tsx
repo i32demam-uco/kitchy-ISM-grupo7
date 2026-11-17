@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 
 interface VectorIconProps {
   name:
@@ -11,19 +11,46 @@ interface VectorIconProps {
     | 'timer'
     | 'arrow-up-right'
     | 'chevron-down'
+    | 'chevron-up'
+    | 'chevron-left'
+    | 'chevron-right'
     | 'hand-wave'
     | 'check'
     | 'zap'
     | 'sparkle'
+    | 'sparkles'
     | 'plus'
+    | 'add'
+    | 'minus'
     | 'qr-code'
     | 'barcode'
     | 'shopping-cart'
+    | 'shopping-bag'
     | 'calendar'
     | 'trash'
-    | 'flash';
+    | 'flash'
+    | 'play'
+    | 'pause'
+    | 'arrow-up'
+    | 'image'
+    | 'close'
+    | 'users'
+    | 'people'
+    | 'layers'
+    | 'location'
+    | 'mic'
+    | 'bell'
+    | 'more-vertical'
+    | 'restaurant'
+    | 'flame'
+    | 'heart'
+    | 'heart-outline'
+    | 'pencil'
+    | 'share-social'
+    | 'logout';
   size?: number;
   color?: string;
+  bgColor?: string;
 }
 
 /**
@@ -36,6 +63,7 @@ export const VectorIcon: React.FC<VectorIconProps> = ({
   name,
   size = 18,
   color = '#FFFFFF',
+  bgColor,
 }) => {
   switch (name) {
     case 'camera':
@@ -374,6 +402,7 @@ export const VectorIcon: React.FC<VectorIconProps> = ({
       );
 
     case 'sparkle':
+    case 'sparkles':
       return (
         <View
           style={{
@@ -413,6 +442,7 @@ export const VectorIcon: React.FC<VectorIconProps> = ({
       );
 
     case 'plus':
+    case 'add':
       return (
         <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
           <View
@@ -433,6 +463,14 @@ export const VectorIcon: React.FC<VectorIconProps> = ({
               borderRadius: 2,
             }}
           />
+        </View>
+      );
+
+    case 'pause':
+      return (
+        <View style={{ width: size, height: size, flexDirection: 'row', justifyContent: 'space-evenly', alignItems: 'center' }}>
+          <View style={{ width: size * 0.24, height: size * 0.8, backgroundColor: color, borderRadius: 2 }} />
+          <View style={{ width: size * 0.24, height: size * 0.8, backgroundColor: color, borderRadius: 2 }} />
         </View>
       );
 
@@ -561,6 +599,473 @@ export const VectorIcon: React.FC<VectorIconProps> = ({
               transform: [{ rotate: '-15deg' }],
             }}
           />
+        </View>
+      );
+
+    case 'chevron-up':
+      return (
+        <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+          <View
+            style={{
+              width: size * 0.45,
+              height: size * 0.45,
+              borderTopWidth: 2,
+              borderLeftWidth: 2,
+              borderColor: color,
+              transform: [{ rotate: '45deg' }, { translateY: size * 0.1 }],
+            }}
+          />
+        </View>
+      );
+
+    case 'chevron-left':
+      return (
+        <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+          <View
+            style={{
+              width: size * 0.45,
+              height: size * 0.45,
+              borderTopWidth: 2,
+              borderLeftWidth: 2,
+              borderColor: color,
+              transform: [{ rotate: '-45deg' }, { translateX: size * 0.1 }],
+            }}
+          />
+        </View>
+      );
+
+    case 'chevron-right':
+      return (
+        <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+          <View
+            style={{
+              width: size * 0.45,
+              height: size * 0.45,
+              borderTopWidth: 2,
+              borderRightWidth: 2,
+              borderColor: color,
+              transform: [{ rotate: '45deg' }, { translateX: -size * 0.1 }],
+            }}
+          />
+        </View>
+      );
+
+    case 'minus':
+      return (
+        <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+          <View
+            style={{
+              width: size * 0.65,
+              height: 2,
+              backgroundColor: color,
+              borderRadius: 1,
+            }}
+          />
+        </View>
+      );
+
+    case 'play':
+      return (
+        <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+          <View
+            style={{
+              width: 0,
+              height: 0,
+              borderLeftWidth: size * 0.55,
+              borderTopWidth: size * 0.35,
+              borderBottomWidth: size * 0.35,
+              borderLeftColor: color,
+              borderTopColor: 'transparent',
+              borderBottomColor: 'transparent',
+              marginLeft: size * 0.1,
+            }}
+          />
+        </View>
+      );
+
+    case 'arrow-up':
+      return (
+        <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+          <View
+            style={{
+              width: size * 0.35,
+              height: size * 0.35,
+              borderTopWidth: 2,
+              borderLeftWidth: 2,
+              borderColor: color,
+              transform: [{ rotate: '45deg' }],
+              position: 'absolute',
+              top: size * 0.2,
+            }}
+          />
+          <View
+            style={{
+              width: 2,
+              height: size * 0.55,
+              backgroundColor: color,
+              position: 'absolute',
+              bottom: size * 0.2,
+            }}
+          />
+        </View>
+      );
+
+    case 'image':
+      return (
+        <View style={{ width: size, height: size * 0.8, borderWidth: 1.6, borderColor: color, borderRadius: 3, justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ width: size * 0.25, height: size * 0.25, borderRadius: (size * 0.25) / 2, backgroundColor: color, position: 'absolute', top: size * 0.1, left: size * 0.15 }} />
+          <View style={{ width: 0, height: 0, borderLeftWidth: size * 0.3, borderRightWidth: size * 0.3, borderBottomWidth: size * 0.35, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: color, position: 'absolute', bottom: 0, right: size * 0.05 }} />
+        </View>
+      );
+
+    case 'close':
+      return (
+        <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ width: size * 0.7, height: 2, backgroundColor: color, transform: [{ rotate: '45deg' }], position: 'absolute' }} />
+          <View style={{ width: size * 0.7, height: 2, backgroundColor: color, transform: [{ rotate: '-45deg' }], position: 'absolute' }} />
+        </View>
+      );
+
+    case 'shopping-bag':
+      return (
+        <View style={{ width: size * 0.8, height: size, justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ width: size * 0.35, height: size * 0.25, borderTopWidth: 1.5, borderLeftWidth: 1.5, borderRightWidth: 1.5, borderColor: color, borderTopLeftRadius: 6, borderTopRightRadius: 6 }} />
+          <View style={{ width: size * 0.75, height: size * 0.6, borderWidth: 1.5, borderColor: color, borderRadius: 3 }} />
+        </View>
+      );
+
+    case 'users':
+    case 'people':
+      return (
+        <View style={{ width: size, height: size * 0.8, justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ width: size * 0.35, height: size * 0.35, borderRadius: (size * 0.35) / 2, borderWidth: 1.4, borderColor: color, position: 'absolute', top: 0, left: size * 0.1 }} />
+          <View style={{ width: size * 0.3, height: size * 0.3, borderRadius: (size * 0.3) / 2, borderWidth: 1.4, borderColor: color, position: 'absolute', top: 0, right: size * 0.1 }} />
+          <View style={{ width: size * 0.6, height: size * 0.35, borderTopWidth: 1.4, borderLeftWidth: 1.4, borderRightWidth: 1.4, borderColor: color, borderTopLeftRadius: 8, borderTopRightRadius: 8, position: 'absolute', bottom: 0, left: 0 }} />
+        </View>
+      );
+
+    case 'layers':
+      return (
+        <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ width: size * 0.65, height: size * 0.35, borderWidth: 1.4, borderColor: color, transform: [{ rotate: '45deg' }] }} />
+        </View>
+      );
+
+    case 'location':
+      return (
+        <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+          <View
+            style={{
+              width: size * 0.6,
+              height: size * 0.6,
+              borderRadius: (size * 0.6) / 2,
+              borderWidth: 1.8,
+              borderColor: color,
+              borderBottomRightRadius: 2,
+              transform: [{ rotate: '-45deg' }],
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <View
+              style={{
+                width: size * 0.2,
+                height: size * 0.2,
+                borderRadius: (size * 0.2) / 2,
+                backgroundColor: color,
+              }}
+            />
+          </View>
+        </View>
+      );
+
+    case 'mic':
+      return (
+        <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+          <View
+            style={{
+              width: size * 0.42,
+              height: size * 0.58,
+              borderRadius: size * 0.21,
+              backgroundColor: color,
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: size * 0.18,
+              width: size * 0.72,
+              height: size * 0.52,
+              borderBottomLeftRadius: size * 0.36,
+              borderBottomRightRadius: size * 0.36,
+              borderWidth: Math.max(1.8, size * 0.09),
+              borderTopWidth: 0,
+              borderColor: color,
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              bottom: size * 0.06,
+              width: Math.max(1.8, size * 0.09),
+              height: size * 0.22,
+              backgroundColor: color,
+            }}
+          />
+        </View>
+      );
+
+    case 'bell':
+      return (
+        <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+          <View
+            style={{
+              width: size * 0.55,
+              height: size * 0.55,
+              borderTopLeftRadius: size * 0.3,
+              borderTopRightRadius: size * 0.3,
+              borderWidth: 1.6,
+              borderColor: color,
+              borderBottomWidth: 0,
+            }}
+          />
+          <View style={{ width: size * 0.75, height: 1.8, backgroundColor: color }} />
+          <View style={{ width: size * 0.2, height: size * 0.1, backgroundColor: color, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, marginTop: 1 }} />
+        </View>
+      );
+
+    case 'more-vertical':
+      const dotSize = Math.max(3, Math.round(size * 0.18));
+      return (
+        <View style={{ width: size, height: size, justifyContent: 'space-evenly', alignItems: 'center' }}>
+          <View style={{ width: dotSize, height: dotSize, borderRadius: dotSize / 2, backgroundColor: color }} />
+          <View style={{ width: dotSize, height: dotSize, borderRadius: dotSize / 2, backgroundColor: color }} />
+          <View style={{ width: dotSize, height: dotSize, borderRadius: dotSize / 2, backgroundColor: color }} />
+        </View>
+      );
+
+    case 'logout':
+      return (
+        <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+          {/* Marco de puerta/salida */}
+          <View
+            style={{
+              position: 'absolute',
+              left: 2,
+              top: 2,
+              bottom: 2,
+              width: size * 0.45,
+              borderLeftWidth: 1.8,
+              borderTopWidth: 1.8,
+              borderBottomWidth: 1.8,
+              borderColor: color,
+              borderTopLeftRadius: 3,
+              borderBottomLeftRadius: 3,
+            }}
+          />
+          {/* Flecha horizontal */}
+          <View
+            style={{
+              position: 'absolute',
+              right: 2,
+              width: size * 0.5,
+              height: 1.8,
+              backgroundColor: color,
+            }}
+          />
+          {/* Punta de la flecha */}
+          <View
+            style={{
+              position: 'absolute',
+              right: 2,
+              width: size * 0.26,
+              height: size * 0.26,
+              borderTopWidth: 1.8,
+              borderRightWidth: 1.8,
+              borderColor: color,
+              transform: [{ rotate: '45deg' }],
+            }}
+          />
+        </View>
+      );
+
+    case 'restaurant':
+      return (
+        <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+          {/* Tenedor izquierdo */}
+          <View style={{ position: 'absolute', left: size * 0.18, width: 2, height: size * 0.75, backgroundColor: color, borderRadius: 1 }} />
+          <View style={{ position: 'absolute', left: size * 0.1, top: size * 0.12, width: size * 0.22, height: 2, backgroundColor: color }} />
+          {/* Cuchillo derecho */}
+          <View style={{ position: 'absolute', right: size * 0.18, width: 2.2, height: size * 0.75, backgroundColor: color, borderRadius: 1 }} />
+          <View style={{ position: 'absolute', right: size * 0.16, top: size * 0.12, width: size * 0.14, height: size * 0.35, borderTopRightRadius: 4, backgroundColor: color }} />
+        </View>
+      );
+
+    case 'flame':
+      return (
+        <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+          <View
+            style={{
+              width: size * 0.55,
+              height: size * 0.75,
+              borderTopLeftRadius: size * 0.4,
+              borderBottomLeftRadius: size * 0.3,
+              borderBottomRightRadius: size * 0.3,
+              backgroundColor: color,
+              transform: [{ rotate: '45deg' }],
+            }}
+          />
+        </View>
+      );
+
+    case 'heart': {
+      const s = Math.round(size * 0.52);
+      return (
+        <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center', overflow: 'visible' }}>
+          <View
+            style={{
+              width: s,
+              height: s,
+              backgroundColor: color,
+              transform: [{ rotate: '-45deg' }],
+              marginTop: Math.round(size * 0.16),
+            }}
+          >
+            <View
+              style={{
+                position: 'absolute',
+                top: -s / 2,
+                left: 0,
+                width: s,
+                height: s,
+                borderRadius: s / 2,
+                backgroundColor: color,
+              }}
+            />
+            <View
+              style={{
+                position: 'absolute',
+                top: 0,
+                right: -s / 2,
+                width: s,
+                height: s,
+                borderRadius: s / 2,
+                backgroundColor: color,
+              }}
+            />
+          </View>
+        </View>
+      );
+    }
+
+    case 'heart-outline': {
+      const s = Math.round(size * 0.52);
+      const bg = bgColor || '#27272A';
+      return (
+        <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center', overflow: 'visible' }}>
+          <View
+            style={{
+              width: s,
+              height: s,
+              backgroundColor: color,
+              transform: [{ rotate: '-45deg' }],
+              marginTop: Math.round(size * 0.16),
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {/* Lóbulo superior exterior */}
+            <View
+              style={{
+                position: 'absolute',
+                top: -s / 2,
+                left: 0,
+                width: s,
+                height: s,
+                borderRadius: s / 2,
+                backgroundColor: color,
+              }}
+            />
+            {/* Lóbulo derecho exterior */}
+            <View
+              style={{
+                position: 'absolute',
+                top: 0,
+                right: -s / 2,
+                width: s,
+                height: s,
+                borderRadius: s / 2,
+                backgroundColor: color,
+              }}
+            />
+
+            {/* Vaciado interior escalado concéntricamente para crear el trazo hueco outline */}
+            <View
+              style={{
+                width: s,
+                height: s,
+                backgroundColor: bg,
+                position: 'absolute',
+                transform: [{ scale: 0.72 }],
+                zIndex: 2,
+              }}
+            >
+              <View
+                style={{
+                  position: 'absolute',
+                  top: -s / 2,
+                  left: 0,
+                  width: s,
+                  height: s,
+                  borderRadius: s / 2,
+                  backgroundColor: bg,
+                }}
+              />
+              <View
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  right: -s / 2,
+                  width: s,
+                  height: s,
+                  borderRadius: s / 2,
+                  backgroundColor: bg,
+                }}
+              />
+            </View>
+          </View>
+        </View>
+      );
+    }
+
+    case 'pencil':
+      return (
+        <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+          <View
+            style={{
+              width: size * 0.28,
+              height: size * 0.72,
+              borderWidth: 1.6,
+              borderColor: color,
+              borderRadius: 2,
+              transform: [{ rotate: '45deg' }],
+            }}
+          />
+        </View>
+      );
+
+    case 'share-social':
+      return (
+        <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+          {/* Nodo derecho superior */}
+          <View style={{ position: 'absolute', top: size * 0.15, right: size * 0.12, width: size * 0.24, height: size * 0.24, borderRadius: (size * 0.24) / 2, backgroundColor: color }} />
+          {/* Nodo izquierdo centro */}
+          <View style={{ position: 'absolute', top: size * 0.38, left: size * 0.12, width: size * 0.24, height: size * 0.24, borderRadius: (size * 0.24) / 2, backgroundColor: color }} />
+          {/* Nodo derecho inferior */}
+          <View style={{ position: 'absolute', bottom: size * 0.15, right: size * 0.12, width: size * 0.24, height: size * 0.24, borderRadius: (size * 0.24) / 2, backgroundColor: color }} />
+          {/* Conexiones */}
+          <View style={{ position: 'absolute', top: size * 0.32, left: size * 0.25, width: size * 0.5, height: 1.6, backgroundColor: color, transform: [{ rotate: '-25deg' }] }} />
+          <View style={{ position: 'absolute', bottom: size * 0.32, left: size * 0.25, width: size * 0.5, height: 1.6, backgroundColor: color, transform: [{ rotate: '25deg' }] }} />
         </View>
       );
 

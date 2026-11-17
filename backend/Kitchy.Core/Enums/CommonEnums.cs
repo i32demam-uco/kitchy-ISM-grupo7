@@ -29,5 +29,22 @@ namespace Kitchy.Core.Enums
         Despensa,
         Congelador
     }
+
+    public enum HouseMessageType
+    {
+        Text,
+        Image,
+        Video,
+        SystemAction
+    }
+
+    public enum SystemActionType
+    {
+        Consumed,
+        ScannedTicket,
+        AddedManual,
+        CookedRecipe
+    }
 }
+
 

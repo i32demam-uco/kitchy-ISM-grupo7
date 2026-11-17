@@ -12,12 +12,17 @@ import { Colors, Typography } from '../theme';
 import { InventoryItem } from '../types';
 import { VectorIcon } from './VectorIcon';
 import { HapticFeedback } from '../services/haptics';
+import { formatPantryQuantity } from '../utils/quantityFormatter';
+import { getProductImageUrl } from '../screens/ScannerScreen';
 
 interface SwipeablePantryRowProps {
   item: InventoryItem;
   isLast: boolean;
   onPress: (item: InventoryItem) => void;
   onQuickConsume: (item: InventoryItem) => void;
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: (item: InventoryItem) => void;
 }
 
 const ACTION_WIDTH = 110;
@@ -26,12 +31,16 @@ const ACTION_WIDTH = 110;
  * SwipeablePantryRow - Fila de despensa con gesto de deslizamiento horizontal a la izquierda (PanResponder).
  * Deslizar hacia la izquierda revela el botón "Consumo Rápido" (-1 unidad).
  * Si la cantidad llega a 0, activa el flujo inteligente de Auto-Lista.
+ * Admite modo selección múltiple para agotar/eliminar en lote.
  */
 export const SwipeablePantryRow: React.FC<SwipeablePantryRowProps> = ({
   item,
   isLast,
   onPress,
   onQuickConsume,
+  isSelectionMode = false,
+  isSelected = false,
+  onToggleSelect,
 }) => {
   const translateX = useRef(new Animated.Value(0)).current;
   const isRed = item.urgencyLevel === 'Red';
@@ -40,10 +49,12 @@ export const SwipeablePantryRow: React.FC<SwipeablePantryRowProps> = ({
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gestureState) => {
+        if (isSelectionMode) return false;
         // Solo capturar gestos predominantemente horizontales hacia la izquierda
         return Math.abs(gestureState.dx) > 15 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
       },
       onPanResponderMove: (_, gestureState) => {
+        if (isSelectionMode) return;
         // Limitar arrastre a la izquierda únicamente (valores negativos)
         if (gestureState.dx < 0) {
           const clamped = Math.max(-ACTION_WIDTH - 20, gestureState.dx);
@@ -105,35 +116,49 @@ export const SwipeablePantryRow: React.FC<SwipeablePantryRowProps> = ({
       <Animated.View
         style={[
           styles.rowContent,
+          isSelected && styles.rowContentSelected,
           {
             transform: [{ translateX }],
           },
         ]}
-        {...panResponder.panHandlers}
+        {...(!isSelectionMode ? panResponder.panHandlers : {})}
       >
         <TouchableOpacity
           style={styles.rowTouchable}
           activeOpacity={0.85}
           onPress={() => {
-            closeRow();
-            onPress(item);
+            if (isSelectionMode) {
+              HapticFeedback.selectionAsync();
+              onToggleSelect?.(item);
+            } else {
+              closeRow();
+              onPress(item);
+            }
           }}
         >
           <View style={styles.rowLeft}>
-            {/* Semáforo indicador de caducidad */}
-            <View
-              style={[
-                styles.trafficDot,
-                isRed ? styles.dotRed : isAmber ? styles.dotAmber : styles.dotGreen,
-              ]}
-            />
+            {/* Modo Selección: Checkbox circular interactivo */}
+            {isSelectionMode ? (
+              <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                {isSelected && <VectorIcon name="check" size={12} color="#000000" />}
+              </View>
+            ) : (
+              /* Semáforo indicador de caducidad */
+              <View
+                style={[
+                  styles.trafficDot,
+                  isRed ? styles.dotRed : isAmber ? styles.dotAmber : styles.dotGreen,
+                ]}
+              />
+            )}
 
             {/* Fotografía Real del Alimento */}
             <Image
               source={{
                 uri:
-                  item.imageUrl ||
-                  'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200',
+                  item.imageUrl && !item.imageUrl.includes('photo-1546069901-ba9599a7e63c')
+                    ? item.imageUrl
+                    : getProductImageUrl(item.name, item.category),
               }}
               style={styles.foodImage}
               resizeMode="cover"
@@ -172,7 +197,7 @@ export const SwipeablePantryRow: React.FC<SwipeablePantryRowProps> = ({
           {/* Cantidad Flotante estilo Píldora */}
           <View style={styles.quantityPill}>
             <Text style={styles.quantityText}>
-              {item.quantity} {item.unit}
+              {formatPantryQuantity(item.quantity, item.unit, item.name)}
             </Text>
           </View>
         </TouchableOpacity>
@@ -225,6 +250,9 @@ const styles = StyleSheet.create({
   rowContent: {
     backgroundColor: '#1C1C1E',
   },
+  rowContentSelected: {
+    backgroundColor: '#16241B',
+  },
   rowTouchable: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -236,6 +264,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: '#6B7280',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  checkboxSelected: {
+    backgroundColor: Colors.primaryGreen,
+    borderColor: Colors.primaryGreen,
   },
   trafficDot: {
     width: 6,

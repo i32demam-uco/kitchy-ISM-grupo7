@@ -10,6 +10,7 @@ namespace Kitchy.API.Hubs
         Task ShoppingListUpdated(string action, object? data);
         Task RecipeStepAdvanced(int stepNumber);
         Task UserJoined(string userId);
+        Task ShoppingListUrgencyChanged(object? data);
     }
 
     public class KitchyHub : Hub<IKitchyClient>

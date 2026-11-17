@@ -42,6 +42,11 @@ export const Colors = {
  * Poppins para títulos y branding; Inter para textos secundarios, métricas y lectura.
  */
 export const Typography = {
+  family: Platform.select({
+    ios: 'Poppins',
+    android: 'Poppins',
+    default: 'Poppins',
+  }),
   heading: Platform.select({
     ios: 'Poppins-Bold',
     android: 'Poppins-Bold',

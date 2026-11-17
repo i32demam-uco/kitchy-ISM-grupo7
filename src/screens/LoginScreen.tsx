@@ -13,10 +13,12 @@ import {
   ScrollView,
 } from 'react-native';
 import { Colors, Typography } from '../theme';
-import { useAppDispatch } from '../store';
+import { useAppDispatch, useAppSelector } from '../store';
 import { setCredentials } from '../store/authSlice';
+import { setCurrentTab, setPendingNfcRedirect } from '../store/hardwareSlice';
 import { ApiService } from '../services/api';
 import { KitchyAlert } from '../services/kitchyAlert';
+import { NfcService } from '../services/nfcService';
 
 interface LoginScreenProps {
   onNavigateToRegister: () => void;
@@ -37,6 +39,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   onLoginSuccess,
 }) => {
   const dispatch = useAppDispatch();
+  const pendingNfc = useAppSelector((state) => state.hardware.pendingNfcRedirect);
   const [email, setEmail] = useState('aleja@uco.es');
   const [password, setPassword] = useState('Kitchy2026!');
   const [isLoading, setIsLoading] = useState(false);
@@ -63,11 +66,25 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           defaultHouseId: response.defaultHouseId,
         })
       );
+
+      // Si el usuario escaneó una etiqueta NFC previamente estando deslogueado,
+      // redirigir directamente a la Lista de la Compra y enfocar el input
+      const pendingRedirect =
+        pendingNfc || (await NfcService.getPendingRedirect());
+
+      if (pendingRedirect) {
+        NfcService.handleRedirection(pendingRedirect, dispatch);
+        dispatch(setPendingNfcRedirect(null));
+        await NfcService.clearPendingRedirect();
+      } else {
+        // Por defecto, forzar destino en Dashboard (Inicio)
+        dispatch(setCurrentTab('home'));
+      }
       onLoginSuccess();
     } catch {
       KitchyAlert.show(
-        'Error de Autenticación',
-        'No fue posible iniciar sesión. Verifique sus credenciales.'
+        'Error de inicio de sesión',
+        'No fue posible iniciar sesión. Por favor, comprueba tu correo y contraseña.'
       );
     } finally {
       setIsLoading(false);

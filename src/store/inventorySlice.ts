@@ -1,6 +1,7 @@
 import { createSlice, PayloadAction, createAsyncThunk } from '@reduxjs/toolkit';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { InventoryItem } from '../types';
+import { InventoryItem, InventoryDelta } from '../types';
+import { ImageMatchingService } from '../services/imageMatchingService';
 
 const STORAGE_KEY = '@kitchy_inventory_cache';
 
@@ -51,7 +52,7 @@ const initialPantry: InventoryItem[] = [
     addedByUserId: 'JP',
     urgencyLevel: 'Green',
     remainingDays: 28,
-    imageUrl: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200',
+    imageUrl: 'https://images.unsplash.com/photo-1534483509719-3feaee7c30da?w=200',
   },
   {
     id: 'c0000000-0000-0000-0000-000000000004',
@@ -76,6 +77,8 @@ interface InventoryState {
   isLoading: boolean;
   isOffline: boolean;
   filterUrgentOnly: boolean;
+  selectedPantryItemId: string | null;
+  confirmedExpirationItemIds: string[];
 }
 
 const initialState: InventoryState = {
@@ -83,6 +86,8 @@ const initialState: InventoryState = {
   isLoading: false,
   isOffline: false,
   filterUrgentOnly: false,
+  selectedPantryItemId: null,
+  confirmedExpirationItemIds: [],
 };
 
 // Async thunk to save cache
@@ -102,16 +107,50 @@ export const inventorySlice = createSlice({
   initialState,
   reducers: {
     setInventory: (state, action: PayloadAction<InventoryItem[]>) => {
-      state.items = action.payload;
+      state.items = (action.payload || []).map((item) => ({
+        ...item,
+        imageUrl:
+          item.imageUrl && !item.imageUrl.includes('photo-1546069901-ba9599a7e63c')
+            ? item.imageUrl
+            : ImageMatchingService.matchProductImage(item.name, item.category).imageUrl,
+      }));
     },
     addInventoryItem: (state, action: PayloadAction<InventoryItem>) => {
-      state.items.unshift(action.payload);
+      const item = { ...action.payload };
+      if (!item.id || state.items.some((i) => i.id === item.id)) {
+        item.id = `item-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+      }
+      if (!item.imageUrl || item.imageUrl.includes('photo-1546069901-ba9599a7e63c')) {
+        item.imageUrl = ImageMatchingService.matchProductImage(item.name, item.category).imageUrl;
+      }
+      state.items.unshift(item);
     },
     addMultipleInventoryItems: (state, action: PayloadAction<InventoryItem[]>) => {
-      state.items = [...action.payload, ...state.items];
+      const existingIds = new Set(state.items.map((i) => i.id));
+      const formatted = (action.payload || []).map((item, idx) => {
+        let finalId = item.id;
+        if (!finalId || existingIds.has(finalId)) {
+          finalId = `item-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 8)}`;
+        }
+        existingIds.add(finalId);
+
+        return {
+          ...item,
+          id: finalId,
+          imageUrl:
+            item.imageUrl && !item.imageUrl.includes('photo-1546069901-ba9599a7e63c')
+              ? item.imageUrl
+              : ImageMatchingService.matchProductImage(item.name, item.category).imageUrl,
+        };
+      });
+      state.items = [...formatted, ...state.items];
     },
     removeInventoryItem: (state, action: PayloadAction<string>) => {
       state.items = state.items.filter(i => i.id !== action.payload);
+    },
+    removeMultipleInventoryItems: (state, action: PayloadAction<string[]>) => {
+      const idsToDelete = new Set(action.payload);
+      state.items = state.items.filter(i => !idsToDelete.has(i.id));
     },
     updateInventoryItemQuantity: (
       state,
@@ -133,10 +172,93 @@ export const inventorySlice = createSlice({
       const item = state.items.find(i => i.id === action.payload.id);
       if (item) {
         Object.assign(item, action.payload.changes);
+        if (action.payload.changes.expirationDate) {
+          const expMs = new Date(action.payload.changes.expirationDate).getTime();
+          const diffDays = Math.max(0, Math.ceil((expMs - Date.now()) / (24 * 3600 * 1000)));
+          item.remainingDays = diffDays;
+          if (diffDays <= 1) {
+            item.urgencyLevel = 'Red';
+          } else if (diffDays <= 2) {
+            item.urgencyLevel = 'Amber';
+          } else {
+            item.urgencyLevel = 'Green';
+          }
+          item.hasUserSetExpiration = true;
+          item.expirationConfirmed = true;
+          if (!state.confirmedExpirationItemIds.includes(item.id)) {
+            state.confirmedExpirationItemIds.push(item.id);
+          }
+        }
+      }
+    },
+    confirmItemExpiration: (state, action: PayloadAction<string>) => {
+      const item = state.items.find(i => i.id === action.payload);
+      if (item) {
+        item.hasUserSetExpiration = true;
+        item.expirationConfirmed = true;
+      }
+      if (!state.confirmedExpirationItemIds.includes(action.payload)) {
+        state.confirmedExpirationItemIds.push(action.payload);
       }
     },
     setFilterUrgentOnly: (state, action: PayloadAction<boolean>) => {
       state.filterUrgentOnly = action.payload;
+    },
+    applyInventoryDelta: (state, action: PayloadAction<InventoryDelta>) => {
+      const delta = action.payload;
+      const index = state.items.findIndex(
+        (i) => i.id === delta.itemId || i.name.toLowerCase() === delta.itemName.toLowerCase()
+      );
+
+      if (delta.action === 'DELETED') {
+        if (index !== -1) state.items.splice(index, 1);
+      } else if (delta.action === 'CONSUMED' || delta.action === 'UPDATED') {
+        if (index !== -1) {
+          if (delta.newQuantity <= 0) {
+            state.items.splice(index, 1);
+          } else {
+            state.items[index].quantity = delta.newQuantity;
+          }
+        }
+      } else if (delta.action === 'ADDED') {
+        if (index !== -1) {
+          state.items[index].quantity = delta.newQuantity;
+        } else {
+          state.items.unshift({
+            id: delta.itemId,
+            houseId: '',
+            name: delta.itemName,
+            quantity: delta.newQuantity,
+            unit: delta.unit || 'ud',
+            expirationDate: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+            location: 'Nevera',
+            price: 0,
+            purchaseDate: new Date().toISOString(),
+            addedByUserId: delta.performedByUserId,
+            urgencyLevel: 'Green',
+            remainingDays: 7,
+            imageUrl: delta.imageUrl,
+          });
+        }
+      }
+    },
+    consumeProductOptimistic: (
+      state,
+      action: PayloadAction<{ id: string; quantity: number }>
+    ) => {
+      const index = state.items.findIndex((i) => i.id === action.payload.id);
+      if (index !== -1) {
+        const item = state.items[index];
+        const newQty = Math.max(0, item.quantity - action.payload.quantity);
+        if (newQty <= 0) {
+          state.items.splice(index, 1);
+        } else {
+          item.quantity = newQty;
+        }
+      }
+    },
+    setSelectedPantryItemId: (state, action: PayloadAction<string | null>) => {
+      state.selectedPantryItemId = action.payload;
     },
   },
 });
@@ -146,9 +268,14 @@ export const {
   addInventoryItem,
   addMultipleInventoryItems,
   removeInventoryItem,
+  removeMultipleInventoryItems,
   updateInventoryItemQuantity,
   updateInventoryItemDetails,
   setFilterUrgentOnly,
+  applyInventoryDelta,
+  consumeProductOptimistic,
+  setSelectedPantryItemId,
+  confirmItemExpiration,
 } = inventorySlice.actions;
 
 export default inventorySlice.reducer;

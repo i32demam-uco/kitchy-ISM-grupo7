@@ -17,6 +17,9 @@ namespace Kitchy.Services.Implementations
         private readonly IInventoryRepository _inventoryRepo;
         private readonly IMasterProductRepository _masterProductRepo;
         private readonly IPriceHistoryRepository _priceHistoryRepo;
+        private readonly IHouseCollaborationNotifier? _notifier;
+        private readonly IHouseMessageRepository? _messageRepo;
+        private readonly IUserRepository? _userRepo;
 
         // Regex for date extraction: 24/11/2026, 24-11-26, 24.11.2026
         private static readonly Regex DatePattern = new(
@@ -36,11 +39,17 @@ namespace Kitchy.Services.Implementations
         public OcrService(
             IInventoryRepository inventoryRepo,
             IMasterProductRepository masterProductRepo,
-            IPriceHistoryRepository priceHistoryRepo)
+            IPriceHistoryRepository priceHistoryRepo,
+            IHouseCollaborationNotifier? notifier = null,
+            IHouseMessageRepository? messageRepo = null,
+            IUserRepository? userRepo = null)
         {
             _inventoryRepo = inventoryRepo;
             _masterProductRepo = masterProductRepo;
             _priceHistoryRepo = priceHistoryRepo;
+            _notifier = notifier;
+            _messageRepo = messageRepo;
+            _userRepo = userRepo;
         }
 
         public OcrTicketResultDto ParseReceiptText(string rawText)
@@ -236,6 +245,65 @@ namespace Kitchy.Services.Implementations
                     RemainingDays: saved.RemainingDays,
                     ImageUrl: master.ImageUrl
                 ));
+            }
+
+            if (_notifier != null || _messageRepo != null)
+            {
+                var user = _userRepo != null ? await _userRepo.GetByIdAsync(userId) : null;
+                var userName = user?.FullName ?? (userId == "aleja" ? "Alejandro" : userId);
+                var content = $"{userName} ha escaneado una compra y ha añadido {results.Count} productos a la despensa";
+                var actionMetadata = new HouseMessageActionMetadataDto(
+                    ActionType: "SCANNED_TICKET",
+                    PerformedBy: userId,
+                    PerformedByName: userName,
+                    TotalAdded: results.Count,
+                    StoreName: "Mercadona",
+                    AffectedProducts: results.Select(r => new ActionProductItemDto(r.Name, r.Quantity, r.Unit, r.ImageUrl)).ToList()
+                );
+
+                if (_messageRepo != null)
+                {
+                    await _messageRepo.AddMessageAsync(new HouseMessage
+                    {
+                        HouseId = houseId,
+                        SenderId = userId,
+                        MessageType = "SYSTEM_ACTION",
+                        Content = content,
+                        ActionMetadataJson = System.Text.Json.JsonSerializer.Serialize(actionMetadata),
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+
+                if (_notifier != null)
+                {
+                    await _notifier.BroadcastChatMessageAsync(houseId, new HouseMessageDto(
+                        Id: Guid.NewGuid(),
+                        HouseId: houseId,
+                        SenderId: userId,
+                        SenderName: userName,
+                        SenderAvatar: user?.AvatarUrl,
+                        MessageType: "SYSTEM_ACTION",
+                        Content: content,
+                        MediaUrl: null,
+                        MediaThumbnailUrl: null,
+                        ActionMetadata: actionMetadata,
+                        CreatedAt: DateTime.UtcNow
+                    ));
+
+                    foreach (var r in results)
+                    {
+                        await _notifier.BroadcastInventoryDeltaAsync(houseId, new InventoryDeltaDto(
+                            Action: "ADDED",
+                            ItemId: r.Id,
+                            ItemName: r.Name,
+                            NewQuantity: r.Quantity,
+                            QuantityDelta: r.Quantity,
+                            Unit: r.Unit,
+                            PerformedByUserId: userId,
+                            ImageUrl: r.ImageUrl
+                        ));
+                    }
+                }
             }
 
             return results;

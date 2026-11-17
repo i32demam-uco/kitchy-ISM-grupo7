@@ -16,6 +16,8 @@ import { Colors, Typography } from '../theme';
 import { useAppDispatch, useAppSelector } from '../store';
 import { setActiveHouse, addHouse, setAvailableHouses } from '../store/authSlice';
 import { setInventory } from '../store/inventorySlice';
+import { setCurrentTab } from '../store/hardwareSlice';
+import { markHouseAsRead } from '../store/houseSocialSlice';
 import { House } from '../types';
 import { VectorIcon } from '../components/VectorIcon';
 import { PermissionsManager } from '../services/permissions';
@@ -36,6 +38,8 @@ const { width } = Dimensions.get('window');
 export const HousesScreen: React.FC = () => {
   const dispatch = useAppDispatch();
   const auth = useAppSelector((state) => state.auth);
+  const houseSocial = useAppSelector((state) => state.houseSocial);
+  const currentUserId = auth.userId || 'aleja';
 
   // Estados de Modales
   const [selectedHouseForQr, setSelectedHouseForQr] = useState<House | null>(null);
@@ -177,7 +181,7 @@ export const HousesScreen: React.FC = () => {
       <View style={styles.header}>
         <Text style={styles.title}>Gestión Multihogar</Text>
         <Text style={styles.subtitle}>
-          Aislamiento de despensas, listas colaborativas y códigos QR (RF1)
+          Aislamiento de despensas, listas colaborativas y códigos QR
         </Text>
 
         {/* Botones de Acción Rápida: Crear Hogar / Unirse con QR */}
@@ -213,6 +217,14 @@ export const HousesScreen: React.FC = () => {
         {auth.availableHouses.map((h) => {
           const isActive = h.id === auth.activeHouse.id;
           const displayCode = h.joinCode || h.inviteCode || 'UCO2026';
+          const unreadForHouse = houseSocial.messages.filter((m) => {
+            if (m.houseId !== h.id) return false;
+            if (m.senderId === currentUserId) return false;
+            const lastRead = houseSocial.lastReadTimestamps[h.id];
+            if (!lastRead) return true;
+            return new Date(m.createdAt) > new Date(lastRead);
+          }).length;
+
           return (
             <View
               key={h.id}
@@ -237,7 +249,16 @@ export const HousesScreen: React.FC = () => {
                     />
                   </View>
                   <View style={styles.houseTextGroup}>
-                    <Text style={styles.houseCardName}>{h.name}</Text>
+                    <View style={styles.houseNameWithBadgeRow}>
+                      <Text style={styles.houseCardName}>{h.name}</Text>
+                      {unreadForHouse > 0 && (
+                        <View style={styles.houseUnreadHeaderBadge}>
+                          <Text style={styles.houseUnreadHeaderBadgeText}>
+                            {unreadForHouse > 99 ? '99+' : `${unreadForHouse} nuevos`}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
                     <Text style={styles.houseCardAddress}>
                       {h.address || 'Córdoba, España'}
                     </Text>
@@ -266,14 +287,39 @@ export const HousesScreen: React.FC = () => {
                   </Text>
                 </View>
 
-                <TouchableOpacity
-                  style={styles.qrShareBtn}
-                  onPress={() => setSelectedHouseForQr(h)}
-                  activeOpacity={0.8}
-                >
-                  <VectorIcon name="qr-code" size={15} color="#000000" />
-                  <Text style={styles.qrShareBtnText}>Ver QR e Invitar</Text>
-                </TouchableOpacity>
+                <View style={styles.cardActionsRow}>
+                  <TouchableOpacity
+                    style={styles.chatSocialBtn}
+                    onPress={() => {
+                      if (!isActive) {
+                        handleSelectActiveHouse(h);
+                      }
+                      dispatch(markHouseAsRead(h.id));
+                      dispatch(setCurrentTab('social'));
+                    }}
+                    activeOpacity={0.8}
+                    testID={`btn-chat-house-${h.id}`}
+                  >
+                    <VectorIcon name="users" size={14} color={Colors.primaryGreen} />
+                    <Text style={styles.chatSocialBtnText}>Chat del Hogar</Text>
+                    {unreadForHouse > 0 && (
+                      <View style={styles.chatBadgeCircle}>
+                        <Text style={styles.chatBadgeText}>
+                          {unreadForHouse > 99 ? '99+' : unreadForHouse}
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.qrShareBtn}
+                    onPress={() => setSelectedHouseForQr(h)}
+                    activeOpacity={0.8}
+                  >
+                    <VectorIcon name="qr-code" size={14} color="#000000" />
+                    <Text style={styles.qrShareBtnText}>Ver QR</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           );
@@ -669,6 +715,25 @@ const styles = StyleSheet.create({
   houseTextGroup: {
     flex: 1,
   },
+  houseNameWithBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  houseUnreadHeaderBadge: {
+    backgroundColor: 'rgba(0, 230, 118, 0.15)',
+    borderColor: 'rgba(0, 230, 118, 0.35)',
+    borderWidth: 1,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  houseUnreadHeaderBadgeText: {
+    color: Colors.primaryGreen,
+    fontFamily: Typography.bodySemiBold,
+    fontSize: 10.5,
+    fontWeight: '700',
+  },
   houseCardName: {
     fontSize: 16.5,
     fontFamily: Typography.headingSemiBold,
@@ -733,6 +798,44 @@ const styles = StyleSheet.create({
   codeHighlight: {
     color: Colors.primaryGreen,
     fontWeight: '700',
+  },
+  cardActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  chatSocialBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0, 230, 118, 0.12)',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 230, 118, 0.3)',
+  },
+  chatSocialBtnText: {
+    color: Colors.primaryGreen,
+    fontSize: 11.5,
+    fontFamily: Typography.bodySemiBold,
+    fontWeight: '700',
+  },
+  chatBadgeCircle: {
+    backgroundColor: Colors.primaryGreen,
+    borderRadius: 9,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    marginLeft: 2,
+    minWidth: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chatBadgeText: {
+    color: '#000000',
+    fontFamily: Typography.bodySemiBold,
+    fontSize: 10,
+    fontWeight: '800',
   },
   qrShareBtn: {
     flexDirection: 'row',

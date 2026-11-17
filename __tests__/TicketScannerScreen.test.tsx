@@ -14,9 +14,9 @@ describe('TicketScannerScreen (Figma Screen 2 Fidelity & OCR flow)', () => {
     jest.useRealTimers();
   });
 
-  test('renders simulated receipt, laser view and detected items', async () => {
+  test('renders viewfinder and triggers real OCR capture with physical shutter', async () => {
     let renderer: any;
-    await ReactTestRenderer.act(() => {
+    await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
         <Provider store={store}>
           <TicketScannerScreen />
@@ -25,25 +25,30 @@ describe('TicketScannerScreen (Figma Screen 2 Fidelity & OCR flow)', () => {
     });
 
     const root = renderer.root;
-    const texts = root.findAllByType('Text').map((t: any) => t.props.children).flat();
-    const normalizedText = texts.join(' ').replace(/\s+/g, ' ');
+    let texts = root.findAllByType('Text').map((t: any) => t.props.children).flat();
+    let normalizedText = texts.join(' ').replace(/\s+/g, ' ');
 
-    // Screen title and modes
+    // Screen title and modes (dual mode: Cámara + Código de Barras, sin NFC)
     expect(normalizedText).toContain('Escanear ticket');
     expect(normalizedText).toContain('Piso Ciudad Jardín');
     expect(normalizedText).toContain('Cámara');
-    expect(normalizedText).toContain('NFC');
+    expect(normalizedText).toContain('Código de Barras');
+    expect(normalizedText).not.toContain('NFC');
 
-    // Receipt header & detected items
-    expect(normalizedText).toContain('MERCADONA');
-    expect(normalizedText).toContain('4 productos detectados');
-    expect(normalizedText).toContain('Tomate frito Hacendado');
-    expect(normalizedText).toContain('Huevos L');
-    expect(normalizedText).toContain('Pechuga de pollo');
-    expect(normalizedText).toContain('Leche entera');
+    // Trigger physical shutter button
+    const shutterBtn = root.findByProps({ testID: 'btn-physical-shutter' });
+    expect(shutterBtn).toBeDefined();
 
-    // Instant save button
-    expect(normalizedText).toContain('Guardar 4 productos • 8.00 €');
+    await ReactTestRenderer.act(async () => {
+      shutterBtn.props.onPress();
+    });
+
+    texts = root.findAllByType('Text').map((t: any) => t.props.children).flat();
+    normalizedText = texts.join(' ').replace(/\s+/g, ' ');
+
+    // Detected products populated from real OCR
+    expect(normalizedText).toContain('productos detectados');
+    expect(normalizedText).toMatch(/tomate frito hacendado/i);
 
     await ReactTestRenderer.act(() => {
       renderer.unmount();

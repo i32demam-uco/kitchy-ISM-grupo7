@@ -69,6 +69,31 @@ export function determineCategory(item: { name: string; location?: string; categ
   }
 
   if (
+    name.includes('agua') ||
+    name.includes('refresco') ||
+    name.includes('coca') ||
+    name.includes('cola') ||
+    name.includes('fanta') ||
+    name.includes('pepsi') ||
+    name.includes('sprite') ||
+    name.includes('7up') ||
+    name.includes('nestea') ||
+    name.includes('aquarius') ||
+    name.includes('isotonica') ||
+    name.includes('isotónica') ||
+    name.includes('gaseosa') ||
+    name.includes('zumo') ||
+    name.includes('jugo') ||
+    name.includes('cerveza') ||
+    name.includes('vino') ||
+    name.includes('batido') ||
+    name.includes('horchata') ||
+    name.includes('sidra')
+  ) {
+    return 'Bebidas';
+  }
+
+  if (
     name.includes('tomate') ||
     name.includes('lechuga') ||
     name.includes('cebolla') ||
@@ -141,6 +166,7 @@ export function groupInventoryByCategory(items: InventoryItem[]): CategoryGroup[
     'Pescado',
     'Lácteos y Huevos',
     'Frutas y Verduras',
+    'Bebidas',
     'Despensa y Conservas',
     'Refrigerados',
     'Congelados',

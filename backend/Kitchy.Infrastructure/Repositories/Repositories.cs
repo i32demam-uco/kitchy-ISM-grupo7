@@ -205,6 +205,74 @@ namespace Kitchy.Infrastructure.Repositories
             await _context.SaveChangesAsync();
             return true;
         }
+
+        public async Task<Recipe?> UpdateAsync(Recipe recipe)
+        {
+            var existing = await _context.Recipes
+                .Include(r => r.Ingredients)
+                .FirstOrDefaultAsync(r => r.Id == recipe.Id);
+
+            if (existing == null) return null;
+
+            existing.Title = recipe.Title;
+            existing.Subtitle = recipe.Subtitle;
+            existing.Description = recipe.Description;
+            existing.Servings = recipe.Servings;
+            existing.TotalTimeMinutes = recipe.TotalTimeMinutes;
+            existing.PrepTimeMinutes = recipe.PrepTimeMinutes;
+            existing.Difficulty = recipe.Difficulty;
+            existing.CaloriesKcal = recipe.CaloriesKcal;
+            existing.PantryMatchPercentage = recipe.PantryMatchPercentage;
+            existing.SourceType = recipe.SourceType;
+            existing.ImageUrl = recipe.ImageUrl;
+            existing.InstructionsJson = recipe.InstructionsJson;
+            existing.StepsJson = recipe.StepsJson;
+            existing.IngredientsJson = recipe.IngredientsJson;
+            existing.UpdatedAt = DateTime.UtcNow;
+
+            if (recipe.Ingredients != null && recipe.Ingredients.Any())
+            {
+                _context.RecipeIngredients.RemoveRange(existing.Ingredients);
+                existing.Ingredients = recipe.Ingredients;
+            }
+
+            await _context.SaveChangesAsync();
+            return existing;
+        }
+
+        public async Task<bool> ToggleFavoriteAsync(Guid recipeId, string userId)
+        {
+            var fav = await _context.RecipeFavorites
+                .FirstOrDefaultAsync(rf => rf.RecipeId == recipeId && rf.UserId == userId);
+
+            if (fav != null)
+            {
+                _context.RecipeFavorites.Remove(fav);
+                await _context.SaveChangesAsync();
+                return false;
+            }
+            else
+            {
+                _context.RecipeFavorites.Add(new RecipeFavorite
+                {
+                    RecipeId = recipeId,
+                    UserId = userId,
+                    CreatedAt = DateTime.UtcNow
+                });
+                await _context.SaveChangesAsync();
+                return true;
+            }
+        }
+
+        public async Task<HashSet<Guid>> GetUserFavoriteRecipeIdsAsync(string userId)
+        {
+            var ids = await _context.RecipeFavorites
+                .Where(rf => rf.UserId == userId)
+                .Select(rf => rf.RecipeId)
+                .ToListAsync();
+
+            return new HashSet<Guid>(ids);
+        }
     }
 
     public class HouseRepository : IHouseRepository
@@ -280,6 +348,13 @@ namespace Kitchy.Infrastructure.Repositories
         {
             return await _context.UserHouses
                 .AnyAsync(uh => uh.UserId == userId && uh.HouseId == houseId);
+        }
+
+        public async Task<House?> UpdateHouseAsync(House house)
+        {
+            _context.Houses.Update(house);
+            await _context.SaveChangesAsync();
+            return house;
         }
     }
 
@@ -391,4 +466,61 @@ namespace Kitchy.Infrastructure.Repositories
                 .AnyAsync(u => u.Email.ToLower() == normalizedEmail);
         }
     }
+
+    public class HouseMessageRepository : IHouseMessageRepository
+    {
+        private readonly KitchyDbContext _context;
+
+        public HouseMessageRepository(KitchyDbContext context)
+        {
+            _context = context;
+        }
+
+        public async Task<List<HouseMessage>> GetMessagesAsync(Guid houseId, DateTime? cursor, int limit = 30)
+        {
+            var query = _context.HouseMessages
+                .Include(m => m.Sender)
+                .Where(m => m.HouseId == houseId);
+
+            if (cursor.HasValue)
+            {
+                query = query.Where(m => m.CreatedAt < cursor.Value);
+            }
+
+            return await query
+                .OrderByDescending(m => m.CreatedAt)
+                .Take(limit)
+                .OrderBy(m => m.CreatedAt)
+                .ToListAsync();
+        }
+
+        public async Task<HouseMessage> AddMessageAsync(HouseMessage message)
+        {
+            message.CreatedAt = DateTime.UtcNow;
+            _context.HouseMessages.Add(message);
+            await _context.SaveChangesAsync();
+            return message;
+        }
+
+        public async Task<List<UserHouse>> GetHouseMembersAsync(Guid houseId)
+        {
+            // Join with Users table to get full profile
+            var userHouses = await _context.UserHouses
+                .Where(uh => uh.HouseId == houseId)
+                .ToListAsync();
+
+            var userIds = userHouses.Select(uh => uh.UserId).ToList();
+            var users = await _context.Users
+                .Where(u => userIds.Contains(u.Id))
+                .ToDictionaryAsync(u => u.Id);
+
+            foreach (var uh in userHouses)
+            {
+                // Attach if needed or user info is resolved
+            }
+
+            return userHouses;
+        }
+    }
 }
+

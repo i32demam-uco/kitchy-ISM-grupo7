@@ -13,7 +13,10 @@ namespace Kitchy.Services.Interfaces
         Task<InventoryItemDto?> UpdateItemAsync(Guid houseId, Guid itemId, UpdateInventoryItemDto dto);
         Task<bool> DeleteItemAsync(Guid houseId, Guid itemId);
         Task<bool> DiscardAndAddToShoppingListAsync(Guid houseId, string userId, string barcode);
+        Task<InventoryItemDto?> ConsumeItemAsync(Guid houseId, string userId, Guid itemId, decimal quantityConsumed);
+        Task<List<InventoryItemDto>> AddBatchFromScanAsync(Guid houseId, string userId, List<DetectedProductDto> products, string storeName);
     }
+
 
     public interface IShoppingListService
     {
@@ -22,6 +25,10 @@ namespace Kitchy.Services.Interfaces
         Task<ShoppingListItemDto?> UpdateItemAsync(Guid houseId, Guid itemId, UpdateShoppingItemDto dto);
         Task<bool> DeleteItemAsync(Guid houseId, Guid itemId);
         Task<bool> ClearCheckedAsync(Guid houseId);
+        Task<ShoppingListUrgencyStatusDto> GetUrgencyStatusAsync(Guid houseId);
+        Task<ShoppingListUrgencyStatusDto> SetUrgencyStatusAsync(Guid houseId, bool isUrgent, string source = "MANUAL");
+        Task<ShoppingListUrgencyStatusDto> EvaluateAutomaticUrgencyAsync(Guid houseId);
+        Task<ReconciliationResultDto> ReconcileWithScannedProductsAsync(Guid houseId, string userId, List<DetectedProductDto> scannedProducts);
     }
 
     public interface IDeltaService
@@ -32,10 +39,13 @@ namespace Kitchy.Services.Interfaces
 
     public interface IRecipeService
     {
-        Task<List<RecipeDto>> GetRecipesAsync(Guid houseId);
+        Task<List<RecipeDto>> GetRecipesAsync(Guid houseId, string? userId = null);
         Task<List<RecipeDto>> GetExpiringProductSuggestionsAsync(Guid houseId);
-        Task<RecipeDto?> GetRecipeByIdAsync(Guid recipeId, Guid houseId);
+        Task<RecipeDto?> GetRecipeByIdAsync(Guid recipeId, Guid houseId, string? userId = null);
         Task<RecipeDto> CreateRecipeAsync(Guid houseId, string userId, CreateRecipeDto dto);
+        Task<RecipeDto?> UpdateRecipeAsync(Guid recipeId, Guid houseId, string userId, UpdateRecipeDto dto);
+        Task<bool> ToggleFavoriteAsync(Guid recipeId, string userId);
+        Task<CompleteCookingResultDto> CompleteCookingAsync(Guid recipeId, Guid houseId, string userId, CompleteCookingRequestDto dto);
     }
 
     public interface IOcrService
@@ -48,6 +58,12 @@ namespace Kitchy.Services.Interfaces
     public interface IOpenFoodFactsService
     {
         Task<BarcodeProductDto?> FetchProductByBarcodeAsync(string barcode);
+    }
+
+    public interface IImageMatchingService
+    {
+        Task<ImageMatchResultDto> MatchImageAsync(string productName, string? category = null, string? barcode = null);
+        ImageMatchResultDto MatchImage(string productName, string? category = null);
     }
 
     public interface IAuthService
@@ -63,5 +79,14 @@ namespace Kitchy.Services.Interfaces
         Task<UserProfileDto?> UpdateProfileAsync(string userId, UpdateProfileDto dto);
         Task<bool> ChangePasswordAsync(string userId, ChangePasswordDto dto);
     }
+
+    public interface IHouseSocialService
+    {
+        Task<List<HouseMemberDto>> GetMembersAsync(Guid houseId, string currentUserId);
+        Task<List<HouseMessageDto>> GetMessagesAsync(Guid houseId, string currentUserId, DateTime? cursor, int limit = 30);
+        Task<HouseMessageDto> PostMessageAsync(Guid houseId, string currentUserId, CreateHouseMessageDto dto);
+        Task<HouseMessageDto> CreateSystemActionAsync(Guid houseId, string userId, string actionType, string content, HouseMessageActionMetadataDto actionMetadata);
+    }
 }
+
 

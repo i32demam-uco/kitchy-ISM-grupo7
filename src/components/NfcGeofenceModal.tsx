@@ -28,8 +28,8 @@ export const NfcGeofenceModal: React.FC = () => {
       dispatch(setNfcModalVisible(false));
       dispatch(setCurrentTab('list'));
       KitchyAlert.show(
-        'Etiqueta NFC Detectada',
-        'Etiqueta «Nevera Ciudad Jardín» leída con éxito. Abriendo tu Lista de la Compra colaborativa automáticamente (RF16).'
+        'Etiqueta NFC detectada',
+        'Etiqueta «Nevera Ciudad Jardín» leída con éxito. Abriendo tu Lista de la Compra automáticamente.'
       );
     }, 1000);
   };
@@ -37,7 +37,7 @@ export const NfcGeofenceModal: React.FC = () => {
   const handleSimulateGeofence = () => {
     dispatch(setNfcModalVisible(false));
     KitchyAlert.show(
-      'Geocerca 100m Activada',
+      'Supermercado cercano',
       `Has entrado en el perímetro de ${supermarket}. Tienes ${pendingShoppingCount} productos pendientes en tu lista de compra. ¿Deseas abrirla ahora?`,
       [
         { text: 'Ignorar', style: 'cancel' },
@@ -59,7 +59,7 @@ export const NfcGeofenceModal: React.FC = () => {
         <View style={styles.card}>
           <Text style={styles.title}>Sensores y Hardware Nativo</Text>
           <Text style={styles.subtitle}>
-            Pruebas de NFC (RF16) y Geofencing de Supermercado (RF17)
+            Pruebas de sensor NFC y proximidad de supermercados
           </Text>
 
           {/* NFC Reader Simulation */}

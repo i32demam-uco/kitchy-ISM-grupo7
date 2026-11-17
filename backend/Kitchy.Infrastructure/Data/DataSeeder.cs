@@ -200,6 +200,52 @@ namespace Kitchy.Infrastructure.Data
 
                 context.Recipes.Add(recipe);
 
+                // Initial Seed Messages for House Social Chat
+                context.HouseMessages.AddRange(
+                    new HouseMessage
+                    {
+                        Id = Guid.Parse("e0000000-0000-0000-0000-000000000001"),
+                        HouseId = demoHouseId,
+                        SenderId = "jp",
+                        MessageType = "TEXT",
+                        Content = "¡Hola chavales! He organizado la despensa y añadido la compra semanal.",
+                        CreatedAt = DateTime.UtcNow.AddHours(-3)
+                    },
+                    new HouseMessage
+                    {
+                        Id = Guid.Parse("e0000000-0000-0000-0000-000000000002"),
+                        HouseId = demoHouseId,
+                        SenderId = "jp",
+                        MessageType = "SYSTEM_ACTION",
+                        Content = "JP ha escaneado una compra y ha añadido 4 productos a la despensa",
+                        ActionMetadataJson = System.Text.Json.JsonSerializer.Serialize(new
+                        {
+                            ActionType = "SCANNED_TICKET",
+                            PerformedBy = "jp",
+                            PerformedByName = "José Pablo",
+                            TotalAdded = 4,
+                            StoreName = "Mercadona",
+                            AffectedProducts = new[]
+                            {
+                                new { ProductName = "Tomate frito Hacendado", Quantity = 2m, Unit = "ud", ImageUrl = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200" },
+                                new { ProductName = "Huevos L", Quantity = 6m, Unit = "ud", ImageUrl = "https://images.unsplash.com/photo-1582722872445-44dc5f7e3c8f?w=200" },
+                                new { ProductName = "Pechuga de pollo", Quantity = 500m, Unit = "g", ImageUrl = "https://images.unsplash.com/photo-1604503468506-a8da13d82791?w=200" },
+                                new { ProductName = "Leche entera", Quantity = 1m, Unit = "l", ImageUrl = "https://images.unsplash.com/photo-1550583724-b2692b85b150?w=200" }
+                            }
+                        }),
+                        CreatedAt = DateTime.UtcNow.AddHours(-2)
+                    },
+                    new HouseMessage
+                    {
+                        Id = Guid.Parse("e0000000-0000-0000-0000-000000000003"),
+                        HouseId = demoHouseId,
+                        SenderId = "david",
+                        MessageType = "TEXT",
+                        Content = "¿Alguien va a cenar en casa? La pechuga de pollo caduca hoy.",
+                        CreatedAt = DateTime.UtcNow.AddMinutes(-45)
+                    }
+                );
+
                 await context.SaveChangesAsync();
             }
         }

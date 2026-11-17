@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,11 +14,15 @@ import {
   toggleCheckItem,
   removeShoppingItem,
   clearCheckedItems,
+  toggleUrgencyManual,
 } from '../store/shoppingListSlice';
 import { ShoppingItem } from '../types';
 import { KitchyAlert } from '../services/kitchyAlert';
 import { determineCategory } from '../utils/inventoryGrouping';
 import { HapticFeedback } from '../services/haptics';
+import { VectorIcon } from '../components/VectorIcon';
+import { GeofenceShoppingService } from '../services/geofenceShoppingService';
+import { ApiService } from '../services/api';
 
 const FILTER_CHIPS = [
   'Todos',
@@ -33,11 +37,37 @@ const FILTER_CHIPS = [
 
 export const ShoppingListScreen: React.FC = () => {
   const dispatch = useAppDispatch();
+  const auth = useAppSelector((state) => state.auth);
   const shoppingItems = useAppSelector((state) => state.shoppingList.items);
   const activeHouse = useAppSelector((state) => state.auth.activeHouse);
+  const isUrgent = useAppSelector((state) => state.shoppingList.isUrgent);
+  const urgentModeSource = useAppSelector((state) => state.shoppingList.urgentModeSource);
+  const focusTrigger = useAppSelector((state) => state.hardware.focusShoppingInputTrigger);
+  const inputRef = useRef<any>(null);
   const [newItemName, setNewItemName] = useState('');
-  const [isVoiceRecording, setIsVoiceRecording] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState<string>('Todos');
+  const [isSimulating, setIsSimulating] = useState(false);
+
+  // Monitorización GPS reactiva: Zero-Battery Rule (solo activa si isUrgent === true)
+  useEffect(() => {
+    const pendingCount = shoppingItems.filter((i) => !i.isChecked).length;
+    GeofenceShoppingService.syncMonitoringState(isUrgent, pendingCount, dispatch);
+
+    return () => {
+      GeofenceShoppingService.stopMonitoring();
+    };
+  }, [isUrgent, shoppingItems, dispatch]);
+
+  // Enfoque automático al llegar mediante redirección NFC o atajo
+  useEffect(() => {
+    if (focusTrigger > 0) {
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 350);
+      return () => clearTimeout(timer);
+    }
+  }, [focusTrigger]);
+
 
   // Filtrado instantáneo local con memoización
   const filteredShoppingItems = useMemo(() => {
@@ -73,8 +103,8 @@ export const ShoppingListScreen: React.FC = () => {
     setSelectedFilter(filter);
   };
 
-  const handleAddItem = (source: 'Manual' | 'Voice' = 'Manual', customName?: string) => {
-    const name = customName || newItemName.trim();
+  const handleAddItem = (customName?: string) => {
+    const name = (typeof customName === 'string' && customName !== 'Manual' ? customName : newItemName).trim();
     if (!name) return;
 
     const newItem: ShoppingItem = {
@@ -84,8 +114,8 @@ export const ShoppingListScreen: React.FC = () => {
       quantity: 1,
       unit: 'ud',
       isChecked: false,
-      source,
-      addedByUserId: 'Alejandro',
+      source: 'Manual',
+      addedByUserId: auth.fullName || 'Alejandro',
       createdAt: new Date().toISOString(),
       category: determineCategory({ name }),
     };
@@ -95,16 +125,30 @@ export const ShoppingListScreen: React.FC = () => {
     HapticFeedback.selectionAsync();
   };
 
-  const handleVoiceAddSimulation = () => {
-    setIsVoiceRecording(true);
-    setTimeout(() => {
-      setIsVoiceRecording(false);
-      handleAddItem('Voice', 'Café molido natural');
-      KitchyAlert.show(
-        'Reconocimiento de Voz',
-        'Se ha dictado y añadido «Café molido natural» a la lista colaborativa.'
+  const handleToggleUrgency = () => {
+    HapticFeedback.selectionAsync();
+    const nextUrgent = !isUrgent;
+    dispatch(toggleUrgencyManual());
+    if (activeHouse?.id) {
+      ApiService.updateShoppingListUrgency(activeHouse.id, nextUrgent).catch(() => { });
+    }
+  };
+
+  const handleSimulateGeofence = async () => {
+    HapticFeedback.selectionAsync();
+    setIsSimulating(true);
+    try {
+      const res = await GeofenceShoppingService.simulateNearOpenSupermarket(
+        dispatch,
+        activeItems.length,
+        { forceTrigger: true }
       );
-    }, 1200);
+      if (!res.triggered) {
+        KitchyAlert.show('Simulación de Geocerca', res.message);
+      }
+    } finally {
+      setIsSimulating(false);
+    }
   };
 
   return (
@@ -132,30 +176,82 @@ export const ShoppingListScreen: React.FC = () => {
         )}
       </View>
 
+      {/* Banner Glassmorphism: Modo Compra Urgente y Geocercas */}
+      <View style={[styles.urgencyCard, isUrgent && styles.urgencyCardActive]}>
+        <View style={styles.urgencyTopRow}>
+          <View style={styles.urgencyLeftCol}>
+            <View style={[styles.urgencyIconBubble, isUrgent && styles.urgencyIconBubbleActive]}>
+              <VectorIcon
+                name="location"
+                size={18}
+                color={isUrgent ? '#00E676' : '#6B7280'}
+              />
+            </View>
+            <View style={styles.urgencyTextCol}>
+              <View style={styles.urgencyTitleRow}>
+                <Text style={[styles.urgencyTitle, isUrgent && styles.urgencyTitleActive]}>
+                  {isUrgent ? 'COMPRA URGENTE ACTIVA' : 'Modo Compra Urgente'}
+                </Text>
+                {isUrgent && (
+                  <View style={styles.urgencySourceBadge}>
+                    <Text style={styles.urgencySourceText}>
+                      {urgentModeSource === 'AUTO_LOW_STOCK' ? 'Stock crítico' : 'Manual'}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.urgencySubtitle}>
+                {isUrgent
+                  ? 'GPS activo • Alerta por geocerca si pasas a < 150 m de un súper abierto'
+                  : 'GPS inactivo • Cero consumo de batería'}
+              </Text>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.urgencyToggleBtn, isUrgent && styles.urgencyToggleBtnActive]}
+            onPress={handleToggleUrgency}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.urgencyToggleText, isUrgent && styles.urgencyToggleTextActive]}>
+              {isUrgent ? 'Desactivar' : 'Activar'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Botón de Pruebas Demo: Simular paso por supermercado abierto */}
+        <TouchableOpacity
+          style={styles.demoSimulateBtn}
+          onPress={handleSimulateGeofence}
+          activeOpacity={0.7}
+          disabled={isSimulating}
+        >
+          <VectorIcon name="zap" size={14} color="#00E676" />
+          <Text style={styles.demoSimulateText}>
+            {isSimulating
+              ? 'Simulando paso por supermercado...'
+              : 'Simular paso por supermercado abierto'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Input para añadir rápido */}
       <View style={styles.inputBar}>
         <TextInput
+          ref={inputRef}
           style={styles.textInput}
           placeholder="Añadir producto a la lista..."
           placeholderTextColor="#6B7280"
           value={newItemName}
           onChangeText={setNewItemName}
-          onSubmitEditing={() => handleAddItem('Manual')}
+          onSubmitEditing={() => handleAddItem()}
         />
 
         <TouchableOpacity
           style={styles.addBtn}
-          onPress={() => handleAddItem('Manual')}
+          onPress={() => handleAddItem()}
         >
           <Text style={styles.addBtnText}>+</Text>
-        </TouchableOpacity>
-
-        {/* Botón de voz flotante integrado */}
-        <TouchableOpacity
-          style={[styles.voiceBtn, isVoiceRecording && styles.voiceBtnActive]}
-          onPress={handleVoiceAddSimulation}
-        >
-          <View style={[styles.voiceDot, isVoiceRecording && styles.voiceDotActive]} />
         </TouchableOpacity>
       </View>
 
@@ -357,27 +453,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
   },
-  voiceBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: '#2A2A34',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 6,
-  },
-  voiceBtnActive: {
-    backgroundColor: '#DC2626',
-  },
-  voiceDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: Colors.primaryGreen,
-  },
-  voiceDotActive: {
-    backgroundColor: '#FFFFFF',
-  },
   scrollContent: {
     flex: 1,
   },
@@ -479,6 +554,115 @@ const styles = StyleSheet.create({
   filterChipTextActive: {
     color: '#000000',
     fontWeight: '700',
+  },
+  urgencyCard: {
+    marginHorizontal: 20,
+    marginBottom: 14,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: '#1C1C1E',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  urgencyCardActive: {
+    backgroundColor: '#12241A',
+    borderColor: 'rgba(0, 230, 118, 0.45)',
+  },
+  urgencyTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  urgencyLeftCol: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 10,
+  },
+  urgencyIconBubble: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#26262B',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  urgencyIconBubbleActive: {
+    backgroundColor: 'rgba(0, 230, 118, 0.15)',
+  },
+  urgencyTextCol: {
+    flex: 1,
+  },
+  urgencyTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  urgencyTitle: {
+    fontFamily: Typography.heading,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#9CA3AF',
+    letterSpacing: 0.5,
+  },
+  urgencyTitleActive: {
+    color: Colors.primaryGreen,
+  },
+  urgencySourceBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: 'rgba(0, 230, 118, 0.18)',
+  },
+  urgencySourceText: {
+    fontFamily: Typography.body,
+    fontSize: 10,
+    fontWeight: '600',
+    color: Colors.primaryGreen,
+  },
+  urgencySubtitle: {
+    fontFamily: Typography.body,
+    fontSize: 11,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  urgencyToggleBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: '#2A2A30',
+  },
+  urgencyToggleBtnActive: {
+    backgroundColor: Colors.primaryGreen,
+  },
+  urgencyToggleText: {
+    fontFamily: Typography.body,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#9CA3AF',
+  },
+  urgencyToggleTextActive: {
+    color: '#000000',
+  },
+  demoSimulateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0, 230, 118, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 230, 118, 0.2)',
+  },
+  demoSimulateText: {
+    fontFamily: Typography.body,
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.primaryGreen,
   },
 });
 

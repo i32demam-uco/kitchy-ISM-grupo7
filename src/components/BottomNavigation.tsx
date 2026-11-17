@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Platform,
   Animated,
   LayoutChangeEvent,
+  Keyboard,
 } from 'react-native';
 import { Colors, Typography } from '../theme';
 import { RootTab } from '../types';
@@ -30,6 +31,18 @@ export const BottomNavigation: React.FC = () => {
   const shoppingItemsCount = useAppSelector(
     (state) => state.shoppingList.items.filter((i) => !i.isChecked).length
   );
+  const messages = useAppSelector((state) => state.houseSocial.messages);
+  const lastReadTimestamps = useAppSelector((state) => state.houseSocial.lastReadTimestamps);
+  const userId = useAppSelector((state) => state.auth.userId);
+
+  const unreadMessagesCount = useMemo(() => {
+    return messages.filter((m) => {
+      if (m.senderId === userId) return false;
+      const lastRead = lastReadTimestamps[m.houseId];
+      if (!lastRead) return true;
+      return new Date(m.createdAt) > new Date(lastRead);
+    }).length;
+  }, [messages, lastReadTimestamps, userId]);
 
   // Almacena las coordenadas X y anchos medidos de cada botón de pestaña
   const [tabPositions, setTabPositions] = useState<{
@@ -41,6 +54,22 @@ export const BottomNavigation: React.FC = () => {
   const bubbleScaleX = useRef(new Animated.Value(1)).current;
   const bubbleScaleY = useRef(new Animated.Value(1)).current;
   const bubbleOpacity = useRef(new Animated.Value(1)).current;
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => setIsKeyboardVisible(true)
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setIsKeyboardVisible(false)
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   // Registrar la posición en pantalla de cada pestaña
   const handleTabLayout = (tab: RootTab, event: LayoutChangeEvent) => {
@@ -121,6 +150,16 @@ export const BottomNavigation: React.FC = () => {
     dispatch(setVoiceListening(true));
     dispatch(setCurrentTab('cook'));
   };
+
+  const isSubScreen =
+    currentTab === 'scan' ||
+    currentTab === 'profile' ||
+    currentTab === 'pantry' ||
+    currentTab === 'social';
+
+  if (isKeyboardVisible || isSubScreen) {
+    return null;
+  }
 
   return (
     <View style={styles.floatingWrapper} pointerEvents="box-none">
@@ -204,9 +243,18 @@ export const BottomNavigation: React.FC = () => {
           onPress={() => handleTabPress('houses')}
           activeOpacity={0.7}
         >
-          <Text style={[styles.iconText, currentTab === 'houses' && styles.iconActive]}>
-            ⊞
-          </Text>
+          <View>
+            <Text style={[styles.iconText, currentTab === 'houses' && styles.iconActive]}>
+              ⊞
+            </Text>
+            {unreadMessagesCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>
+                  {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
+                </Text>
+              </View>
+            )}
+          </View>
           <Text style={[styles.tabLabel, currentTab === 'houses' && styles.labelActive]}>
             Hogares
           </Text>
@@ -218,7 +266,7 @@ export const BottomNavigation: React.FC = () => {
         <TouchableOpacity
           style={[
             styles.giantFab,
-            currentTab === 'scan' && styles.giantFabActive,
+            (currentTab as string) === 'scan' && styles.giantFabActive,
           ]}
           onPress={() => handleTabPress('scan')}
           onLongPress={handleScanLongPress}

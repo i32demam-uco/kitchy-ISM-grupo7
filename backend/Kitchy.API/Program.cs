@@ -43,17 +43,23 @@ builder.Services.AddScoped<IHouseRepository, HouseRepository>();
 builder.Services.AddScoped<IMasterProductRepository, MasterProductRepository>();
 builder.Services.AddScoped<IPriceHistoryRepository, PriceHistoryRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IHouseMessageRepository, HouseMessageRepository>();
 
 // 3. Dependency Injection: Services
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<IShoppingListService, ShoppingListService>();
 builder.Services.AddScoped<IDeltaService, DeltaService>();
+builder.Services.AddScoped<IRecipeDeltaService, RecipeDeltaService>();
 builder.Services.AddScoped<IRecipeService, RecipeService>();
+builder.Services.AddScoped<IGeminiRecipeService, GeminiRecipeService>();
 builder.Services.AddScoped<IOcrService, OcrService>();
 builder.Services.AddScoped<IOpenFoodFactsService, OpenFoodFactsService>();
+builder.Services.AddScoped<IImageMatchingService, ImageMatchingService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IHouseSocialService, HouseSocialService>();
+builder.Services.AddScoped<IHouseCollaborationNotifier, HouseCollaborationNotifier>();
 
 // 4. SignalR Realtime Hub
 builder.Services.AddSignalR();
@@ -88,7 +94,7 @@ builder.Services.AddAuthentication(options =>
         {
             var accessToken = context.Request.Query["access_token"];
             var path = context.HttpContext.Request.Path;
-            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs/kitchy"))
+            if (!string.IsNullOrEmpty(accessToken) && (path.StartsWithSegments("/hubs/kitchy") || path.StartsWithSegments("/hubs/house-collaboration")))
             {
                 context.Token = accessToken;
             }
@@ -177,6 +183,7 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapHub<KitchyHub>("/hubs/kitchy");
+app.MapHub<HouseCollaborationHub>("/hubs/house-collaboration");
 
 app.Run();
 

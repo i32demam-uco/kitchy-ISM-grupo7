@@ -7,18 +7,23 @@ import {
   useWindowDimensions,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  BackHandler,
+  Linking,
+  Vibration,
 } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { Provider } from 'react-redux';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { store, useAppDispatch, useAppSelector } from './src/store';
 import { setInventory } from './src/store/inventorySlice';
-import { setCurrentTab } from './src/store/hardwareSlice';
+import { setCurrentTab, setPendingNfcRedirect } from './src/store/hardwareSlice';
 import { RootTab } from './src/types';
 import { Colors } from './src/theme';
 import { BottomNavigation } from './src/components/BottomNavigation';
 import { SplashScreen } from './src/components/SplashScreen';
 import { CustomAlertModal } from './src/components/CustomAlertModal';
+import { KitchyAlert } from './src/services/kitchyAlert';
+import { ApiService } from './src/services/api';
 import { DashboardScreen } from './src/screens/DashboardScreen';
 import { TicketScannerScreen } from './src/screens/TicketScannerScreen';
 import { CookingModeScreen } from './src/screens/CookingModeScreen';
@@ -26,9 +31,11 @@ import { ShoppingListScreen } from './src/screens/ShoppingListScreen';
 import { HousesScreen } from './src/screens/HousesScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
 import { FullPantryScreen } from './src/screens/FullPantryScreen';
+import { HouseSocialScreen } from './src/screens/HouseSocialScreen';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { RegisterScreen } from './src/screens/RegisterScreen';
 import { NfcGeofenceModal } from './src/components/NfcGeofenceModal';
+import { NfcService, parseNfcTag } from './src/services/nfcService';
 
 const MAIN_TABS: RootTab[] = ['home', 'list', 'cook', 'houses'];
 
@@ -46,7 +53,11 @@ const MAIN_TABS: RootTab[] = ['home', 'list', 'cook', 'houses'];
 const MainNavigator: React.FC = () => {
   const dispatch = useAppDispatch();
   const currentTab = useAppSelector((state) => state.hardware.currentTab);
+  const isPagerScrollEnabled = useAppSelector(
+    (state) => state.hardware.isPagerScrollEnabled ?? true
+  );
   const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
+  const availableHouses = useAppSelector((state) => state.auth.availableHouses);
 
   const [isSplashVisible, setIsSplashVisible] = useState(true);
   const [authView, setAuthView] = useState<'login' | 'register'>('login');
@@ -54,6 +65,64 @@ const MainNavigator: React.FC = () => {
   const { width: screenWidth } = useWindowDimensions();
   const pagerRef = useRef<any>(null);
   const isProgrammaticScroll = useRef(false);
+  const isUserDragging = useRef(false);
+
+  // Escucha de Deep Linking y Lectura NDEF Nativa (Banda/Pulsera NFC)
+  useEffect(() => {
+    // 1. Detección en Cold Start (Arranque en frío con app cerrada)
+    const checkColdStartNfcAndDeepLinks = async () => {
+      try {
+        let detected: any = null;
+
+        const initialTag = await NfcService.getInitialTag();
+        if (initialTag) {
+          detected = initialTag;
+        } else {
+          const initialUrl = await Linking.getInitialURL();
+          if (initialUrl && initialUrl.toLowerCase().startsWith('kitchy://')) {
+            detected = parseNfcTag(initialUrl);
+          }
+        }
+
+        if (detected) {
+          const session = await ApiService.getStoredSession();
+          if (session && session.token) {
+            // Usuario con sesión activa: saltar directamente a ShoppingListScreen
+            NfcService.handleRedirection(detected, dispatch, availableHouses);
+          } else {
+            // Usuario con sesión cerrada: registrar como pendiente para redirigir tras el login
+            dispatch(setPendingNfcRedirect(detected));
+            await NfcService.setPendingRedirect(detected);
+            try {
+              Vibration.vibrate([0, 70, 50, 70]);
+            } catch {}
+          }
+        }
+      } catch {
+        // Silenciar en entornos sin chip NFC
+      }
+    };
+
+    checkColdStartNfcAndDeepLinks();
+
+    // 2. Escucha activa en Foreground y Background
+    const cleanupNfc = NfcService.setupForegroundListener(async (parsed) => {
+      const session = await ApiService.getStoredSession();
+      if (session && session.token) {
+        NfcService.handleRedirection(parsed, dispatch, availableHouses);
+      } else {
+        dispatch(setPendingNfcRedirect(parsed));
+        await NfcService.setPendingRedirect(parsed);
+        try {
+          Vibration.vibrate([0, 70, 50, 70]);
+        } catch {}
+      }
+    });
+
+    return () => {
+      cleanupNfc();
+    };
+  }, [dispatch, availableHouses]);
 
   // Hidratación Offline-First desde Caché Local (RNF3)
   useEffect(() => {
@@ -74,23 +143,34 @@ const MainNavigator: React.FC = () => {
     hydrateLocalCache();
   }, [dispatch]);
 
+  // Al autenticarse, purgar cualquier pestaña anterior y fijar 'home' salvo si ya se redirigió a 'list'
+  useEffect(() => {
+    if (isAuthenticated) {
+      if (currentTab !== 'list') {
+        dispatch(setCurrentTab('home'));
+      }
+    }
+  }, [isAuthenticated, dispatch]);
+
   // Sincronizar el scroll del pager horizontal al pulsar una pestaña en la barra inferior
   useEffect(() => {
     const tabIndex = MAIN_TABS.indexOf(currentTab);
-    if (tabIndex !== -1 && pagerRef.current) {
+    if (tabIndex !== -1 && pagerRef.current && screenWidth > 0) {
       isProgrammaticScroll.current = true;
       pagerRef.current.scrollTo({ x: tabIndex * screenWidth, animated: true });
       const timer = setTimeout(() => {
         isProgrammaticScroll.current = false;
-      }, 350);
+      }, 450);
       return () => clearTimeout(timer);
     }
   }, [currentTab, screenWidth]);
 
-  // Manejar el cambio de pestaña cuando el usuario arrastra la pantalla horizontalmente
+  // Manejar el cambio de pestaña ÚNICAMENTE cuando el usuario arrastra la pantalla físicamente con el dedo
   const handleMomentumScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (isProgrammaticScroll.current) return;
+    if (!isUserDragging.current || isProgrammaticScroll.current) return;
+    isUserDragging.current = false;
     const offsetX = e.nativeEvent.contentOffset.x;
+    if (!screenWidth || screenWidth <= 0) return;
     const pageIndex = Math.round(offsetX / screenWidth);
     const targetTab = MAIN_TABS[pageIndex];
     if (targetTab && targetTab !== currentTab) {
@@ -99,7 +179,56 @@ const MainNavigator: React.FC = () => {
   };
 
   const isSubScreen =
-    currentTab === 'scan' || currentTab === 'profile' || currentTab === 'pantry';
+    currentTab === 'scan' ||
+    currentTab === 'profile' ||
+    currentTab === 'pantry' ||
+    currentTab === 'social';
+
+  // Intercepción del Botón 'Atrás' Físico / Gestos de Android (BackHandler)
+  useEffect(() => {
+    const onBackPress = () => {
+      if (!isAuthenticated) return false;
+
+      // 1. Si está en el chat social del hogar, volver a gestión multihogar (Hogares)
+      if (currentTab === 'social') {
+        dispatch(setCurrentTab('houses'));
+        return true;
+      }
+
+      // 1b. Si está en otra subpantalla (Perfil, Despensa completa, Escáner), volver a Inicio
+      if (isSubScreen) {
+        dispatch(setCurrentTab('home'));
+        return true;
+      }
+
+      // 2. Si está en otra pestaña de la barra principal (Lista, Cocinar, Hogares), volver a Inicio
+      if (currentTab !== 'home') {
+        dispatch(setCurrentTab('home'));
+        return true;
+      }
+
+      // 3. Si ya está en la pantalla principal (Dashboard / Inicio), confirmar salida con estética Kitchy
+      KitchyAlert.show(
+        '¿Salir de Kitchy?',
+        '¿Estás seguro de que quieres salir de la aplicación?',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Salir',
+            style: 'destructive',
+            onPress: () => BackHandler.exitApp(),
+          },
+        ]
+      );
+      return true;
+    };
+
+    const backSubscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      onBackPress
+    );
+    return () => backSubscription.remove();
+  }, [isAuthenticated, isSubScreen, currentTab, dispatch]);
 
   const renderSubScreen = () => {
     switch (currentTab) {
@@ -109,6 +238,8 @@ const MainNavigator: React.FC = () => {
         return <ProfileScreen />;
       case 'pantry':
         return <FullPantryScreen />;
+      case 'social':
+        return <HouseSocialScreen />;
       default:
         return null;
     }
@@ -130,8 +261,22 @@ const MainNavigator: React.FC = () => {
                 ref={pagerRef}
                 horizontal
                 pagingEnabled
+                scrollEnabled={isPagerScrollEnabled}
+                nestedScrollEnabled={true}
+                directionalLockEnabled={true}
                 showsHorizontalScrollIndicator={false}
                 scrollEventThrottle={16}
+                contentOffset={{
+                  x:
+                    (MAIN_TABS.indexOf(currentTab) >= 0
+                      ? MAIN_TABS.indexOf(currentTab)
+                      : 0) * screenWidth,
+                  y: 0,
+                }}
+                onScrollBeginDrag={() => {
+                  isUserDragging.current = true;
+                  isProgrammaticScroll.current = false;
+                }}
                 onMomentumScrollEnd={handleMomentumScrollEnd}
                 style={styles.content}
               >
@@ -150,8 +295,8 @@ const MainNavigator: React.FC = () => {
               </ScrollView>
             )}
 
-            {/* Barra de Navegación Inferior (Isla Flotante con Dynamic Island Bubble) */}
-            <BottomNavigation />
+            {/* Barra de Navegación Inferior (Isla Flotante con Dynamic Island Bubble) - Solo en pestañas principales */}
+            {!isSubScreen && <BottomNavigation />}
 
             {/* Modal de Simulación de Sensores NFC y Geovalla de Supermercado (100m) */}
             <NfcGeofenceModal />

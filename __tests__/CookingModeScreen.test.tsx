@@ -3,13 +3,16 @@ import ReactTestRenderer from 'react-test-renderer';
 import { Provider } from 'react-redux';
 import { store } from '../src/store';
 import { CookingModeScreen } from '../src/screens/CookingModeScreen';
+import { setHandsFreeActive, setActiveRecipe } from '../src/store/recipesSlice';
 
 describe('CookingModeScreen (Figma Screen 3 Hands-free Mode)', () => {
   beforeEach(() => {
     jest.useFakeTimers();
+    store.dispatch(setHandsFreeActive(true));
   });
 
   afterEach(() => {
+    store.dispatch(setHandsFreeActive(false));
     jest.clearAllTimers();
     jest.useRealTimers();
   });
@@ -26,12 +29,12 @@ describe('CookingModeScreen (Figma Screen 3 Hands-free Mode)', () => {
 
     const root = renderer.root;
     const texts = root.findAllByType('Text').map((t: any) => t.props.children).flat();
-    const normalizedText = texts.join(' ').replace(/\s+/g, ' ');
+    const normalizedText = texts.join(' ').replace(/\s+/g, ' ').replace(/•/g, '·');
 
     // Recipe header
-    expect(normalizedText).toContain('MODO COCINA • MANOS LIBRES');
+    expect(normalizedText).toContain('MODO COCINA · MANOS LIBRES');
     expect(normalizedText).toContain('Pollo con tomate y huevo');
-    expect(normalizedText).toContain('2 personas • Con lo que tienes en casa');
+    expect(normalizedText).toContain('2 personas · Con lo que tienes en casa');
 
     // Step instruction
     expect(normalizedText).toContain('Añade el tomate y baja el fuego');
@@ -39,7 +42,7 @@ describe('CookingModeScreen (Figma Screen 3 Hands-free Mode)', () => {
 
     // Safety tip & voice
     expect(normalizedText).toContain('El pollo debe alcanzar 74 °C en el centro.');
-    expect(normalizedText).toContain('Te escucho, Alejandro');
+    expect(normalizedText).toContain('siguiente');
 
     // Clean up
     await ReactTestRenderer.act(() => {

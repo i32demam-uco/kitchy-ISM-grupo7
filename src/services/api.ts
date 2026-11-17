@@ -99,13 +99,77 @@ export class ApiService {
       : { 'Content-Type': 'application/json' };
   }
 
+  static async get<T>(endpoint: string): Promise<T | null> {
+    try {
+      const headers = await this.getAuthHeader();
+      const url = endpoint.startsWith('http')
+        ? endpoint
+        : `${API_BASE_URL}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+      const response = await fetch(url, {
+        method: 'GET',
+        headers,
+      });
+      if (response.ok) {
+        return (await response.json()) as T;
+      }
+    } catch {
+      // Fallback tolerante
+    }
+    return null;
+  }
+
+  static async post<T>(endpoint: string, data?: any): Promise<T | null> {
+    try {
+      const headers = await this.getAuthHeader();
+      const url = endpoint.startsWith('http')
+        ? endpoint
+        : `${API_BASE_URL}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: data !== undefined ? JSON.stringify(data) : undefined,
+      });
+      if (response.ok) {
+        return (await response.json()) as T;
+      }
+    } catch {
+      // Fallback tolerante
+    }
+    return null;
+  }
+
+  static async put<T>(endpoint: string, data?: any): Promise<T | null> {
+    try {
+      const headers = await this.getAuthHeader();
+      const url = endpoint.startsWith('http')
+        ? endpoint
+        : `${API_BASE_URL}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers,
+        body: data !== undefined ? JSON.stringify(data) : undefined,
+      });
+      if (response.ok) {
+        return (await response.json()) as T;
+      }
+    } catch {
+      // Fallback tolerante
+    }
+    return null;
+  }
+
   static async login(email: string, password: string): Promise<AuthApiResponse> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 650);
+
     try {
       const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         const data: AuthApiResponse = await response.json();
@@ -114,7 +178,8 @@ export class ApiService {
         return data;
       }
     } catch {
-      // Fallback tolerante si el backend está en proceso de arranque
+      clearTimeout(timeoutId);
+      // Fallback tolerante si el backend está desconectado o en red física distinta
     }
 
     const cleanId = email.split('@')[0] || 'aleja';
@@ -145,12 +210,17 @@ export class ApiService {
     password: string,
     fullName: string
   ): Promise<AuthApiResponse> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 650);
+
     try {
       const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, fullName }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         const data: AuthApiResponse = await response.json();
@@ -159,6 +229,7 @@ export class ApiService {
         return data;
       }
     } catch {
+      clearTimeout(timeoutId);
       // Fallback tolerante si el backend está en proceso de arranque
     }
 
@@ -449,6 +520,86 @@ export class ApiService {
     }
 
     return fallbackItem;
+  }
+
+  static async getHouseMembers(houseId: string): Promise<any[]> {
+    try {
+      const headers = await this.getAuthHeader();
+      const response = await fetch(`${API_BASE_URL}/api/houses/${houseId}/members`, {
+        method: 'GET',
+        headers,
+      });
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch {
+      // Fallback
+    }
+    return [
+      { userId: 'aleja', fullName: 'Alejandro Gallardo', role: 'Admin', isOnline: true },
+      { userId: 'JP', fullName: 'José Pablo', role: 'Miembro', isOnline: true },
+      { userId: 'David', fullName: 'David', role: 'Miembro', isOnline: true },
+    ];
+  }
+
+  static async getShoppingListUrgency(houseId: string): Promise<{ isUrgent: boolean; urgentModeSource: string; urgentUpdatedAt: string | null; pendingCount: number } | null> {
+    try {
+      const headers = await this.getAuthHeader();
+      const response = await fetch(`${API_BASE_URL}/api/shoppinglist/urgency?houseId=${houseId}`, {
+        method: 'GET',
+        headers,
+      });
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch {
+      // Fallback
+    }
+    return null;
+  }
+
+  static async updateShoppingListUrgency(houseId: string, isUrgent: boolean): Promise<boolean> {
+    try {
+      const headers = await this.getAuthHeader();
+      const response = await fetch(`${API_BASE_URL}/api/shoppinglist/urgency?houseId=${houseId}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ isUrgent }),
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  static async reconcileShoppingList(
+    houseId: string,
+    detectedProducts: any[]
+  ): Promise<{ reconciledCount: number; reconciledItemNames: string[]; isUrgent: boolean; remainingCount: number } | null> {
+    try {
+      const headers = await this.getAuthHeader();
+      const response = await fetch(`${API_BASE_URL}/api/shoppinglist/reconcile?houseId=${houseId}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          detectedProducts: detectedProducts.map((p) => ({
+            name: p.name,
+            quantity: p.quantity || 1,
+            unit: p.unit || 'ud',
+            unitPrice: p.unitPrice || 0,
+            totalPrice: p.totalPrice || 0,
+            estimatedExpiration: p.estimatedExpiration || null,
+            category: p.category || 'Varios',
+          })),
+        }),
+      });
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch {
+      // Fallback
+    }
+    return null;
   }
 }
 

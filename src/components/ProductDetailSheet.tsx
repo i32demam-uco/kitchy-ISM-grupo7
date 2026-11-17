@@ -14,7 +14,22 @@ import { InventoryItem } from '../types';
 import { VectorIcon } from './VectorIcon';
 import { HapticFeedback } from '../services/haptics';
 import { determineCategory } from '../utils/inventoryGrouping';
+import { formatPantryQuantity } from '../utils/quantityFormatter';
 import { CalendarPickerModal } from './CalendarPickerModal';
+import { getProductImageUrl } from '../screens/ScannerScreen';
+
+export const AVAILABLE_CATEGORIES = [
+  'Carne',
+  'Pescado',
+  'Lácteos y Huevos',
+  'Frutas y Verduras',
+  'Bebidas',
+  'Despensa y Conservas',
+  'Limpieza y Hogar',
+  'Refrigerados',
+  'Congelados',
+  'Otros Alimentos',
+] as const;
 
 interface ProductDetailSheetProps {
   visible: boolean;
@@ -23,6 +38,7 @@ interface ProductDetailSheetProps {
   onUpdateQuantity: (item: InventoryItem, newQuantity: number) => void;
   onUpdateExpiration: (item: InventoryItem, newDate: string) => void;
   onDepleted: (item: InventoryItem) => void;
+  onUpdateCategory?: (item: InventoryItem, newCategory: string) => void;
 }
 
 export const ProductDetailSheet: React.FC<ProductDetailSheetProps> = ({
@@ -32,19 +48,28 @@ export const ProductDetailSheet: React.FC<ProductDetailSheetProps> = ({
   onUpdateQuantity,
   onUpdateExpiration,
   onDepleted,
+  onUpdateCategory,
 }) => {
-  if (!item) return null;
-
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isCalendarModalVisible, setIsCalendarModalVisible] = useState(false);
-  const [quantityInputText, setQuantityInputText] = useState(String(item.quantity));
+  const [quantityInputText, setQuantityInputText] = useState(item ? String(item.quantity) : '1');
   const longPressTimerRef = useRef<any>(null);
 
-  const category = determineCategory(item);
+  const initialCategory = item?.category || (item ? determineCategory(item) : 'Otros Alimentos');
+  const [currentCategory, setCurrentCategory] = useState<string>(initialCategory);
 
   useEffect(() => {
-    setQuantityInputText(String(item.quantity));
-  }, [item.quantity]);
+    if (item) {
+      setCurrentCategory(item.category || determineCategory(item));
+      setQuantityInputText(String(item.quantity));
+    }
+  }, [item?.id, item?.category, item?.quantity]);
+
+  const handleSelectCategory = (newCat: string) => {
+    HapticFeedback.selectionAsync();
+    setCurrentCategory(newCat);
+    onUpdateCategory?.(item!, newCat);
+  };
 
   const stopLongPress = () => {
     if (longPressTimerRef.current) {
@@ -58,6 +83,8 @@ export const ProductDetailSheet: React.FC<ProductDetailSheetProps> = ({
       stopLongPress();
     };
   }, []);
+
+  if (!item || !visible) return null;
 
   const getStep = (currentQty: number) => {
     const unit = (item.unit || '').toLowerCase();
@@ -155,8 +182,9 @@ export const ProductDetailSheet: React.FC<ProductDetailSheetProps> = ({
             <Image
               source={{
                 uri:
-                  item.imageUrl ||
-                  'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600',
+                  item.imageUrl && !item.imageUrl.includes('photo-1546069901-ba9599a7e63c')
+                    ? item.imageUrl
+                    : getProductImageUrl(item.name, currentCategory || item.category),
               }}
               style={styles.headerImage}
               resizeMode="cover"
@@ -174,7 +202,7 @@ export const ProductDetailSheet: React.FC<ProductDetailSheetProps> = ({
 
             {/* Categoría Badge flotante */}
             <View style={styles.categoryBadge}>
-              <Text style={styles.categoryBadgeText}>{category}</Text>
+              <Text style={styles.categoryBadgeText}>{currentCategory}</Text>
             </View>
           </View>
 
@@ -185,6 +213,54 @@ export const ProductDetailSheet: React.FC<ProductDetailSheetProps> = ({
               <Text style={styles.addedByText}>
                 {item.location} • Añadido por <Text style={styles.boldText}>{item.addedByUserId}</Text>
               </Text>
+            </View>
+
+            {/* Selector Manual de Categoría de Alimento */}
+            <View style={styles.categoryCard}>
+              <View style={styles.categoryCardHeader}>
+                <View style={styles.categoryCardTitleRow}>
+                  <VectorIcon name="layers" size={14} color={Colors.primaryGreen} />
+                  <Text style={styles.categoryCardHeading}>CATEGORÍA DEL ALIMENTO</Text>
+                </View>
+                <View style={styles.activeCategoryPill}>
+                  <Text style={styles.activeCategoryPillText}>{currentCategory}</Text>
+                </View>
+              </View>
+
+              <Text style={styles.categoryHelpText}>
+                Selecciona la categoría donde quieres clasificar este alimento:
+              </Text>
+
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.categoryChipsScroll}
+              >
+                {AVAILABLE_CATEGORIES.map((cat) => {
+                  const isSelected = currentCategory === cat;
+                  return (
+                    <TouchableOpacity
+                      key={cat}
+                      style={[
+                        styles.categoryChip,
+                        isSelected && styles.categoryChipActive,
+                      ]}
+                      onPress={() => handleSelectCategory(cat)}
+                      activeOpacity={0.7}
+                      accessibilityLabel={`Categoría ${cat}`}
+                    >
+                      <Text
+                        style={[
+                          styles.categoryChipText,
+                          isSelected && styles.categoryChipTextActive,
+                        ]}
+                      >
+                        {cat}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
             </View>
 
             {/* Sección de Caducidad Editable */}
@@ -271,7 +347,9 @@ export const ProductDetailSheet: React.FC<ProductDetailSheetProps> = ({
             <View style={styles.quantitySection}>
               <View style={styles.quantityHeaderRow}>
                 <Text style={styles.sectionHeading}>CANTIDAD EN DESPENSA</Text>
-                <Text style={styles.hintTapText}>Toca el número para escribir</Text>
+                <Text style={styles.hintTapText}>
+                  {formatPantryQuantity(item.quantity, item.unit, item.name)}
+                </Text>
               </View>
 
               <View style={styles.fittsQuantityRow}>
@@ -450,6 +528,78 @@ const styles = StyleSheet.create({
   boldText: {
     color: '#D1D5DB',
     fontWeight: '600',
+  },
+  categoryCard: {
+    backgroundColor: '#262629',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  categoryCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  categoryCardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  categoryCardHeading: {
+    fontFamily: Typography.heading,
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#9CA3AF',
+    letterSpacing: 0.8,
+  },
+  activeCategoryPill: {
+    backgroundColor: 'rgba(0, 230, 118, 0.15)',
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 230, 118, 0.3)',
+  },
+  activeCategoryPillText: {
+    fontFamily: Typography.body,
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.primaryGreen,
+  },
+  categoryHelpText: {
+    fontFamily: Typography.body,
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginBottom: 10,
+  },
+  categoryChipsScroll: {
+    gap: 8,
+    paddingVertical: 2,
+  },
+  categoryChip: {
+    backgroundColor: '#1C1C20',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  categoryChipActive: {
+    backgroundColor: Colors.primaryGreen,
+    borderColor: Colors.primaryGreen,
+  },
+  categoryChipText: {
+    fontFamily: Typography.body,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#9CA3AF',
+  },
+  categoryChipTextActive: {
+    color: '#000000',
+    fontWeight: '800',
   },
   metaCard: {
     backgroundColor: '#262629',
