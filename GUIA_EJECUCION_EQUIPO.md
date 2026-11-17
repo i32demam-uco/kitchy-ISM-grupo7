@@ -166,8 +166,17 @@ a7c8b210    device
 
 ## 4. Instalación del Proyecto Kitchy
 
-1. Abre tu terminal en la carpeta donde quieras clonar el proyecto (por ejemplo `C:\`):
+> ⚠️ **¡MUY IMPORTANTE EN WINDOWS! Usa una ruta de directorio corta**:
+> En Windows existe un límite de longitud de rutas (`MAX_PATH` de 260 caracteres y `CMAKE_OBJECT_PATH_MAX` de 250 caracteres).
+> **NO clones el repositorio dentro de carpetas muy anidadas** como por ejemplo:
+> `C:\Users\Nombre\Desktop\University\Cuarto\ISM\Kitchy\kitchy-ISM-grupo7\` ❌
+> Clónalo siempre en una ruta corta directa como:
+> `C:\kitchy-ISM-grupo7` o `C:\dev\kitchy-ISM-grupo7` ✅
+> De este modo evitarás que el compilador de Android (CMake y Ninja) falle por exceder el límite de longitud de archivo.
+
+1. Abre tu terminal en una ruta corta (por ejemplo `C:\`):
    ```bash
+   cd C:\
    git clone <URL_DEL_REPOSITORIO_GIT>
    cd kitchy-ISM-grupo7
    ```
@@ -246,6 +255,16 @@ cd android
 cd ..
 npm run android
 ```
+
+### Error 6: *"ninja: error: manifest 'build.ninja' still dirty after 100 tries / CMAKE_OBJECT_PATH_MAX"*
+- **Causa**: El proyecto está ubicado en una ruta con demasiadas subcarpetas (ej. `Desktop\University\Cuarto\ISM\...`) superando el límite de 250 caracteres de CMake en Windows, o hay archivos residuales en la caché nativa de C++.
+- **Solución**:
+  1. Mueve o clona la carpeta del proyecto a una ruta corta como `C:\kitchy-ISM-grupo7`.
+  2. Si existe la carpeta `android/.cxx`, bórrala.
+  3. Ejecuta `git pull` para asegurarte de tener la última versión del repositorio (donde ya se eliminaron paquetes nativos C++ pesados e innecesarios).
+  4. Ejecuta `npm install`.
+  5. Ejecuta `cd android && ./gradlew clean && cd ..`.
+  6. Lanza de nuevo `npm run android`.
 
 ---
 ¡Listo! Siguiendo estos pasos, Kitchy funcionará fluidamente en tu teléfono Android físico con sensores, cámara para OCR y hardware en tiempo real.
