@@ -1,5 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { House } from '../types';
+import { SupermarketRadarService } from '../services/supermarketRadarService';
 
 export interface AuthState {
   token: string | null;
@@ -81,6 +82,11 @@ export const authSlice = createSlice({
     logout: (state) => {
       state.token = null;
       state.isAuthenticated = false;
+      try {
+        SupermarketRadarService.stopTracking();
+      } catch {
+        // Ignorar
+      }
     },
     updateUserProfile: (
       state,

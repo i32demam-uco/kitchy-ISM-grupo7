@@ -47,6 +47,7 @@ interface VectorIconProps {
     | 'heart-outline'
     | 'pencil'
     | 'share-social'
+    | 'radar'
     | 'logout';
   size?: number;
   color?: string;
@@ -748,6 +749,47 @@ export const VectorIcon: React.FC<VectorIconProps> = ({
       return (
         <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
           <View style={{ width: size * 0.65, height: size * 0.35, borderWidth: 1.4, borderColor: color, transform: [{ rotate: '45deg' }] }} />
+        </View>
+      );
+
+    case 'radar':
+      return (
+        <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+          {/* Círculo exterior */}
+          <View
+            style={{
+              position: 'absolute',
+              width: size * 0.95,
+              height: size * 0.95,
+              borderRadius: (size * 0.95) / 2,
+              borderWidth: 1.5,
+              borderColor: color,
+              borderBottomColor: 'transparent',
+              transform: [{ rotate: '-45deg' }],
+            }}
+          />
+          {/* Círculo intermedio */}
+          <View
+            style={{
+              position: 'absolute',
+              width: size * 0.62,
+              height: size * 0.62,
+              borderRadius: (size * 0.62) / 2,
+              borderWidth: 1.5,
+              borderColor: color,
+              borderBottomColor: 'transparent',
+              transform: [{ rotate: '-45deg' }],
+            }}
+          />
+          {/* Punto emisor central */}
+          <View
+            style={{
+              width: size * 0.25,
+              height: size * 0.25,
+              borderRadius: (size * 0.25) / 2,
+              backgroundColor: color,
+            }}
+          />
         </View>
       );
 

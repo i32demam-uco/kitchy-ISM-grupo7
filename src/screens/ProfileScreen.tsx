@@ -8,14 +8,17 @@ import {
   Image,
   TextInput,
   Modal,
+  Switch,
 } from 'react-native';
 import { Colors, Typography } from '../theme';
 import { useAppDispatch, useAppSelector } from '../store';
 import { logout, updateUserProfile } from '../store/authSlice';
-import { setCurrentTab } from '../store/hardwareSlice';
+import { setCurrentTab, setRadarEnabled } from '../store/hardwareSlice';
 import { ApiService } from '../services/api';
 import { KitchyAlert } from '../services/kitchyAlert';
 import { VectorIcon } from '../components/VectorIcon';
+import { SupermarketRadarService } from '../services/supermarketRadarService';
+import { RadarDeactivationModal } from '../components/RadarDeactivationModal';
 
 export const ProfileScreen: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -25,6 +28,26 @@ export const ProfileScreen: React.FC = () => {
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [isFaqModalOpen, setIsFaqModalOpen] = useState(false);
   const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
+  const [isRadarModalOpen, setIsRadarModalOpen] = useState(false);
+
+  const isRadarEnabled = useAppSelector((state) => state.hardware.isRadarEnabled);
+
+  const handleToggleRadar = (value: boolean) => {
+    if (!value) {
+      // Directiva UX: Interceptar desactivación y mostrar modal glassmorphism
+      setIsRadarModalOpen(true);
+    } else {
+      dispatch(setRadarEnabled(true));
+      SupermarketRadarService.setRadarEnabled(true);
+      SupermarketRadarService.requestNativePermissions();
+    }
+  };
+
+  const handleConfirmDeactivateRadar = async () => {
+    setIsRadarModalOpen(false);
+    dispatch(setRadarEnabled(false));
+    await SupermarketRadarService.setRadarEnabled(false);
+  };
 
   // Estados para "Mis Datos"
   const [editName, setEditName] = useState(auth.fullName);
@@ -125,6 +148,7 @@ export const ProfileScreen: React.FC = () => {
           style: 'destructive',
           onPress: async () => {
             dispatch(setCurrentTab('home'));
+            await SupermarketRadarService.handleLogoutCleanup();
             await ApiService.logout();
             dispatch(logout());
           },
@@ -245,6 +269,33 @@ export const ProfileScreen: React.FC = () => {
           </View>
           <Text style={styles.actionRowChevron}>›</Text>
         </TouchableOpacity>
+
+        {/* Sección de Sensores y Hardware */}
+        <Text style={styles.sectionHeader}>SENSORES Y GEOFENCING</Text>
+
+        {/* Tarjeta de Control: Radar de Supermercados con Switch */}
+        <View style={styles.actionRowCard}>
+          <View style={styles.actionRowLeft}>
+            <View style={[styles.actionIconBox, isRadarEnabled && { backgroundColor: 'rgba(16, 185, 129, 0.15)', borderColor: '#10B981' }]}>
+              <VectorIcon name="radar" size={18} color={isRadarEnabled ? '#10B981' : '#6B7280'} />
+            </View>
+            <View style={{ flex: 1, marginRight: 10 }}>
+              <Text style={styles.actionRowTitle}>Radar de Supermercados</Text>
+              <Text style={styles.actionRowDesc}>
+                {isRadarEnabled
+                  ? 'Avisos automáticos al pasar a < 150m de un súper con productos pendientes'
+                  : 'Desactivado • Cero consumo de batería'}
+              </Text>
+            </View>
+          </View>
+          <Switch
+            value={isRadarEnabled}
+            onValueChange={handleToggleRadar}
+            trackColor={{ false: '#3A3A3C', true: '#10B981' }}
+            thumbColor="#FFFFFF"
+            testID="switch-profile-radar"
+          />
+        </View>
 
         {/* Sección de Información y Ayuda */}
         <Text style={styles.sectionHeader}>INFORMACIÓN Y AYUDA</Text>
@@ -556,6 +607,13 @@ export const ProfileScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Modal Kitchy de Confirmación Glassmorphism para Desactivar Radar */}
+      <RadarDeactivationModal
+        visible={isRadarModalOpen}
+        onCancel={() => setIsRadarModalOpen(false)}
+        onConfirmDeactivate={handleConfirmDeactivateRadar}
+      />
     </View>
   );
 };

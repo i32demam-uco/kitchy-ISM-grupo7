@@ -10,6 +10,8 @@ interface HardwareState {
   isNfcModalVisible: boolean;
   isGeofenceAlertVisible: boolean;
   geofenceSupermarketName: string;
+  isRadarEnabled: boolean;
+  isRadarModalVisible: boolean;
   focusShoppingInputTrigger: number;
   pendingNfcRedirect: any | null;
 }
@@ -23,6 +25,8 @@ const initialState: HardwareState = {
   isNfcModalVisible: false,
   isGeofenceAlertVisible: false,
   geofenceSupermarketName: 'Mercadona Gran Vía Parque (a 80 m)',
+  isRadarEnabled: true,
+  isRadarModalVisible: false,
   focusShoppingInputTrigger: 0,
   pendingNfcRedirect: null,
 };
@@ -55,6 +59,12 @@ export const hardwareSlice = createSlice({
     setGeofenceAlertVisible: (state, action: PayloadAction<boolean>) => {
       state.isGeofenceAlertVisible = action.payload;
     },
+    setRadarEnabled: (state, action: PayloadAction<boolean>) => {
+      state.isRadarEnabled = action.payload;
+    },
+    setRadarModalVisible: (state, action: PayloadAction<boolean>) => {
+      state.isRadarModalVisible = action.payload;
+    },
     setPagerScrollEnabled: (state, action: PayloadAction<boolean>) => {
       state.isPagerScrollEnabled = action.payload;
     },
@@ -70,6 +80,8 @@ export const {
   setVoiceStatusText,
   setNfcModalVisible,
   setGeofenceAlertVisible,
+  setRadarEnabled,
+  setRadarModalVisible,
   setPagerScrollEnabled,
 } = hardwareSlice.actions;
 

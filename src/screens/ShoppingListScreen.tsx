@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   TextInput,
+  Switch,
 } from 'react-native';
 import { Colors, Typography } from '../theme';
 import { useAppDispatch, useAppSelector } from '../store';
@@ -16,12 +17,15 @@ import {
   clearCheckedItems,
   toggleUrgencyManual,
 } from '../store/shoppingListSlice';
+import { setRadarEnabled } from '../store/hardwareSlice';
 import { ShoppingItem } from '../types';
 import { KitchyAlert } from '../services/kitchyAlert';
 import { determineCategory } from '../utils/inventoryGrouping';
 import { HapticFeedback } from '../services/haptics';
 import { VectorIcon } from '../components/VectorIcon';
 import { GeofenceShoppingService } from '../services/geofenceShoppingService';
+import { SupermarketRadarService } from '../services/supermarketRadarService';
+import { RadarDeactivationModal } from '../components/RadarDeactivationModal';
 import { ApiService } from '../services/api';
 
 const FILTER_CHIPS = [
@@ -46,17 +50,27 @@ export const ShoppingListScreen: React.FC = () => {
   const inputRef = useRef<any>(null);
   const [newItemName, setNewItemName] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<string>('Todos');
+  const isRadarEnabled = useAppSelector((state) => state.hardware.isRadarEnabled);
+  const [isDeactivationModalVisible, setIsDeactivationModalVisible] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
 
-  // Monitorización GPS reactiva: Zero-Battery Rule (solo activa si isUrgent === true)
+  // Carga inicial de preferencia persistida del Radar de Supermercados
+  useEffect(() => {
+    SupermarketRadarService.isRadarEnabled().then((enabled) => {
+      dispatch(setRadarEnabled(enabled));
+    });
+  }, [dispatch]);
+
+  // Monitorización GPS reactiva en segundo plano: Vinculada a sesión, productos pendientes y switch
   useEffect(() => {
     const pendingCount = shoppingItems.filter((i) => !i.isChecked).length;
-    GeofenceShoppingService.syncMonitoringState(isUrgent, pendingCount, dispatch);
-
-    return () => {
-      GeofenceShoppingService.stopMonitoring();
-    };
-  }, [isUrgent, shoppingItems, dispatch]);
+    SupermarketRadarService.syncTrackingState({
+      isAuthenticated: auth.isAuthenticated,
+      pendingCount,
+      activeHouseId: activeHouse?.id,
+      dispatch,
+    });
+  }, [auth.isAuthenticated, isRadarEnabled, shoppingItems, activeHouse?.id, dispatch]);
 
   // Enfoque automático al llegar mediante redirección NFC o atajo
   useEffect(() => {
@@ -134,6 +148,25 @@ export const ShoppingListScreen: React.FC = () => {
     }
   };
 
+  const handleToggleRadar = (nextValue: boolean) => {
+    HapticFeedback.selectionAsync();
+    if (!nextValue) {
+      // Directiva UX: Interceptar desactivación y mostrar modal de confirmación glassmorphism
+      setIsDeactivationModalVisible(true);
+    } else {
+      dispatch(setRadarEnabled(true));
+      SupermarketRadarService.setRadarEnabled(true);
+      SupermarketRadarService.requestNativePermissions();
+    }
+  };
+
+  const handleConfirmDeactivateRadar = async () => {
+    HapticFeedback.selectionAsync();
+    setIsDeactivationModalVisible(false);
+    dispatch(setRadarEnabled(false));
+    await SupermarketRadarService.setRadarEnabled(false);
+  };
+
   const handleSimulateGeofence = async () => {
     HapticFeedback.selectionAsync();
     setIsSimulating(true);
@@ -174,6 +207,46 @@ export const ShoppingListScreen: React.FC = () => {
             <Text style={styles.clearBtnText}>Limpiar listos</Text>
           </TouchableOpacity>
         )}
+      </View>
+
+      {/* Control Switch Elegante: Radar de Supermercados con Glassmorphism */}
+      <View style={[styles.radarCard, isRadarEnabled && styles.radarCardActive]}>
+        <View style={styles.radarTopRow}>
+          <View style={styles.radarLeftCol}>
+            <View style={[styles.radarIconBubble, isRadarEnabled && styles.radarIconBubbleActive]}>
+              <VectorIcon
+                name="radar"
+                size={20}
+                color={isRadarEnabled ? '#10B981' : '#6B7280'}
+              />
+            </View>
+            <View style={styles.radarTextCol}>
+              <View style={styles.radarTitleRow}>
+                <Text style={[styles.radarTitle, isRadarEnabled && styles.radarTitleActive]}>
+                  Radar de Supermercados
+                </Text>
+                <View style={[styles.radarBadge, isRadarEnabled ? styles.radarBadgeActive : styles.radarBadgeInactive]}>
+                  <Text style={[styles.radarBadgeText, isRadarEnabled ? styles.radarBadgeTextActive : styles.radarBadgeTextInactive]}>
+                    {isRadarEnabled ? '< 150m • Cooldown 1h' : 'Inactivo'}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.radarSubtitle}>
+                {isRadarEnabled
+                  ? 'Avisos en segundo plano al pasar cerca con productos pendientes'
+                  : 'Radar desactivado • Cero consumo de batería'}
+              </Text>
+            </View>
+          </View>
+
+          <Switch
+            value={isRadarEnabled}
+            onValueChange={handleToggleRadar}
+            trackColor={{ false: '#3A3A3C', true: '#10B981' }}
+            thumbColor="#FFFFFF"
+            testID="switch-radar-shopping"
+          />
+        </View>
       </View>
 
       {/* Banner Glassmorphism: Modo Compra Urgente y Geocercas */}
@@ -356,6 +429,13 @@ export const ShoppingListScreen: React.FC = () => {
           </>
         )}
       </ScrollView>
+
+      {/* Modal Kitchy de Confirmación Glassmorphism para Desactivar Radar */}
+      <RadarDeactivationModal
+        visible={isDeactivationModalVisible}
+        onCancel={() => setIsDeactivationModalVisible(false)}
+        onConfirmDeactivate={handleConfirmDeactivateRadar}
+      />
     </View>
   );
 };
@@ -554,6 +634,88 @@ const styles = StyleSheet.create({
   filterChipTextActive: {
     color: '#000000',
     fontWeight: '700',
+  },
+  radarCard: {
+    marginHorizontal: 20,
+    marginBottom: 10,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: '#1C1C1E',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  radarCardActive: {
+    backgroundColor: 'rgba(16, 185, 129, 0.06)',
+    borderColor: 'rgba(16, 185, 129, 0.35)',
+  },
+  radarTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  radarLeftCol: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 10,
+  },
+  radarIconBubble: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#26262B',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  radarIconBubbleActive: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.4)',
+  },
+  radarTextCol: {
+    flex: 1,
+  },
+  radarTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 2,
+  },
+  radarTitle: {
+    fontFamily: Typography.title,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#D1D5DB',
+  },
+  radarTitleActive: {
+    color: '#FFFFFF',
+  },
+  radarBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  radarBadgeActive: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+  },
+  radarBadgeInactive: {
+    backgroundColor: '#2C2C2E',
+  },
+  radarBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  radarBadgeTextActive: {
+    color: '#10B981',
+  },
+  radarBadgeTextInactive: {
+    color: '#6B7280',
+  },
+  radarSubtitle: {
+    fontSize: 11.5,
+    color: '#9CA3AF',
+    lineHeight: 16,
   },
   urgencyCard: {
     marginHorizontal: 20,
