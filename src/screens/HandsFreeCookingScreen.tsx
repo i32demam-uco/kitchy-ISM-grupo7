@@ -32,6 +32,7 @@ import { SpeechSynthesisService } from '../services/speechSynthesisService';
 import { VoiceRecognitionService } from '../services/voiceRecognitionService';
 import { RecipeService } from '../services/recipeService';
 import { HapticFeedback } from '../services/haptics';
+import { parseRecipeVoiceCommand } from '../utils/recipeVoiceCommands';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -65,6 +66,13 @@ export const HandsFreeCookingScreen: React.FC<HandsFreeCookingScreenProps> = ({ 
   const totalSteps = activeRecipe.steps.length;
 
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isMicListening, setIsMicListening] = useState<boolean>(true);
+  const [lastVoiceTranscript, setLastVoiceTranscript] = useState<string>('');
+  const [voiceFeedback, setVoiceFeedback] = useState<{
+    message: string;
+    type: 'success' | 'info' | 'error';
+  } | null>(null);
+  const feedbackTimeoutRef = useRef<any>(null);
   const lastProximityTrigger = useRef<number>(0);
 
   // Micro-punto parpadeante de detección física de hardware
@@ -340,51 +348,148 @@ export const HandsFreeCookingScreen: React.FC<HandsFreeCookingScreenProps> = ({ 
     };
   }, [hardwareState.isProximityActive, triggerProximityStepAdvance, triggerProximityStepBack]);
 
-  // Escucha activa de comandos por voz
-  useEffect(() => {
-    const handleVoiceCommand = (text: string) => {
-      const lower = text.toLowerCase();
-      if (lower.includes('siguiente') || lower.includes('avanza') || lower.includes('adelante')) {
+  // Procesamiento y ejecución inteligente de comandos de voz
+  const handleVoiceCommand = useCallback(
+    (text: string) => {
+      if (!text || !text.trim()) return;
+      const cleanText = text.trim();
+      setLastVoiceTranscript(cleanText);
+
+      const command = parseRecipeVoiceCommand(cleanText, totalSteps);
+
+      if (command.type === 'GO_TO_STEP' && typeof command.stepNumber === 'number') {
+        const targetIndex = command.stepNumber - 1;
+        if (targetIndex >= 0 && targetIndex < totalSteps) {
+          HapticFeedback.notificationSuccessAsync();
+          dispatch(goToStep(targetIndex));
+          const stepTitle = activeRecipe.steps[targetIndex]?.title || '';
+          setVoiceFeedback({
+            message: `✓ Paso ${command.stepNumber}: ${stepTitle}`,
+            type: 'success',
+          });
+        }
+      } else if (command.type === 'NEXT_STEP') {
         HapticFeedback.selectionAsync();
         if (currentStepIndex < totalSteps - 1) {
           dispatch(nextStep());
+          setVoiceFeedback({
+            message: `✓ Siguiente paso (${currentStepIndex + 2} de ${totalSteps})`,
+            type: 'success',
+          });
+        } else {
+          setVoiceFeedback({
+            message: 'Ya estás en el último paso.',
+            type: 'info',
+          });
         }
-      } else if (lower.includes('repite') || lower.includes('repetir') || lower.includes('otra vez')) {
-        HapticFeedback.selectionAsync();
-        const speechText = `${currentStep.title}. ${currentStep.text}`;
-        SpeechSynthesisService.speak(speechText);
-      } else if (lower.includes('anterior') || lower.includes('atras') || lower.includes('atrás')) {
+      } else if (command.type === 'PREV_STEP') {
         HapticFeedback.selectionAsync();
         if (currentStepIndex > 0) {
           dispatch(prevStep());
+          setVoiceFeedback({
+            message: `✓ Paso anterior (${currentStepIndex} de ${totalSteps})`,
+            type: 'success',
+          });
+        } else {
+          setVoiceFeedback({
+            message: 'Ya estás en el primer paso.',
+            type: 'info',
+          });
         }
-      } else if (lower.includes('iniciar') || lower.includes('arranca') || lower.includes('comenzar')) {
+      } else if (command.type === 'REPEAT_STEP') {
+        HapticFeedback.selectionAsync();
+        if (currentStep) {
+          const speechText = `${currentStep.title}. ${currentStep.text}`;
+          SpeechSynthesisService.speak(speechText);
+          setVoiceFeedback({
+            message: `🔊 Repitiendo: ${currentStep.title}`,
+            type: 'info',
+          });
+        }
+      } else if (command.type === 'START_TIMER') {
         HapticFeedback.selectionAsync();
         if (!recipesState.isTimerRunning) {
           dispatch(toggleTimer());
         }
-      } else if (lower.includes('pausar') || lower.includes('para') || lower.includes('detener')) {
+        setVoiceFeedback({
+          message: '⏱ Temporizador en marcha',
+          type: 'success',
+        });
+      } else if (command.type === 'PAUSE_TIMER') {
         HapticFeedback.selectionAsync();
         if (recipesState.isTimerRunning) {
           dispatch(toggleTimer());
         }
+        setVoiceFeedback({
+          message: '⏸ Temporizador pausado',
+          type: 'info',
+        });
+      } else {
+        setVoiceFeedback({
+          message: `«${cleanText}». Di «pasa al siguiente paso» o «ve al paso 4».`,
+          type: 'info',
+        });
       }
-    };
 
-    try {
-      VoiceRecognitionService.startListening(handleVoiceCommand);
-    } catch {
-      // Fallback sin micro activo
+      if (feedbackTimeoutRef.current) {
+        clearTimeout(feedbackTimeoutRef.current);
+      }
+      feedbackTimeoutRef.current = setTimeout(() => {
+        setVoiceFeedback(null);
+      }, 4000);
+    },
+    [totalSteps, currentStepIndex, activeRecipe.steps, currentStep, recipesState.isTimerRunning, dispatch]
+  );
+
+  // Alternar encendido/apagado del micrófono bajo demanda
+  const toggleVoiceListening = useCallback(async () => {
+    HapticFeedback.impactAsync();
+    if (isMicListening) {
+      await VoiceRecognitionService.stopListening();
+      setIsMicListening(false);
+      setVoiceFeedback({
+        message: 'Micrófono pausado. Pulsa el botón para reactivar.',
+        type: 'info',
+      });
+    } else {
+      setIsMicListening(true);
+      setVoiceFeedback({
+        message: 'Escuchando... Di «pasa al siguiente paso» o «ve al paso 4»',
+        type: 'info',
+      });
+      const started = await VoiceRecognitionService.startListening(
+        handleVoiceCommand,
+        (errMsg) => {
+          setIsMicListening(false);
+          setVoiceFeedback({
+            message: errMsg || 'Error al iniciar reconocimiento de voz',
+            type: 'error',
+          });
+        }
+      );
+      if (!started) {
+        setIsMicListening(false);
+      }
+    }
+  }, [isMicListening, handleVoiceCommand]);
+
+  // Ciclo de vida del reconocimiento de voz vinculado a `isMicListening`
+  useEffect(() => {
+    if (isMicListening) {
+      VoiceRecognitionService.startListening(handleVoiceCommand, (err) => {
+        setIsMicListening(false);
+        setVoiceFeedback({ message: err || 'Micrófono no disponible', type: 'error' });
+      }).catch(() => {
+        setIsMicListening(false);
+      });
+    } else {
+      VoiceRecognitionService.stopListening().catch(() => {});
     }
 
     return () => {
-      try {
-        VoiceRecognitionService.stopListening();
-      } catch {
-        // Ignorar
-      }
+      VoiceRecognitionService.stopListening().catch(() => {});
     };
-  }, [currentStepIndex, totalSteps, recipesState.isTimerRunning, currentStep, dispatch]);
+  }, [isMicListening, handleVoiceCommand]);
 
   const handleBack = () => {
     HapticFeedback.selectionAsync();
@@ -429,18 +534,50 @@ export const HandsFreeCookingScreen: React.FC<HandsFreeCookingScreenProps> = ({ 
           <VectorIcon name="chevron-left" size={20} color="#FFFFFF" />
         </TouchableOpacity>
 
-        {/* Chip "Gestos activos" en Esmeralda Oscuro */}
-        <TouchableOpacity
-          style={[
-            styles.gesturesPill,
-            !hardwareState.isProximityActive && styles.gesturesPillInactive,
-          ]}
-          onPress={() => {
-            HapticFeedback.selectionAsync();
-            dispatch(toggleProximity());
-          }}
-          activeOpacity={0.8}
-        >
+        <View style={styles.topRightControls}>
+          {/* Chip "Control por Voz" Interactivo */}
+          <TouchableOpacity
+            style={[
+              styles.voiceTopPill,
+              isMicListening ? styles.voiceTopPillActive : styles.voiceTopPillInactive,
+            ]}
+            onPress={toggleVoiceListening}
+            activeOpacity={0.8}
+            testID="pill-toggle-mic"
+          >
+            <VectorIcon
+              name="mic"
+              size={13}
+              color={isMicListening ? '#00E676' : '#9CA3AF'}
+            />
+            <Text
+              style={[
+                styles.voiceTopPillText,
+                isMicListening ? styles.voiceTopPillTextActive : styles.voiceTopPillTextInactive,
+              ]}
+            >
+              {isMicListening ? 'Voz activa' : 'Voz pausada'}
+            </Text>
+            <View
+              style={[
+                styles.voiceIndicatorDot,
+                isMicListening && styles.voiceIndicatorDotActive,
+              ]}
+            />
+          </TouchableOpacity>
+
+          {/* Chip "Gestos activos" en Esmeralda Oscuro */}
+          <TouchableOpacity
+            style={[
+              styles.gesturesPill,
+              !hardwareState.isProximityActive && styles.gesturesPillInactive,
+            ]}
+            onPress={() => {
+              HapticFeedback.selectionAsync();
+              dispatch(toggleProximity());
+            }}
+            activeOpacity={0.8}
+          >
           <VectorIcon
             name="hand-wave"
             size={14}
@@ -476,6 +613,7 @@ export const HandsFreeCookingScreen: React.FC<HandsFreeCookingScreenProps> = ({ 
             ]}
           />
         </TouchableOpacity>
+      </View>
       </View>
 
       <ScrollView
@@ -680,28 +818,88 @@ export const HandsFreeCookingScreen: React.FC<HandsFreeCookingScreenProps> = ({ 
         <View style={{ height: 140 }} />
       </ScrollView>
 
-      {/* 9. Barra Inferior Flotante: Ecualizador de Audio a 60 FPS y Asistente */}
+      {/* 9. Barra Inferior Flotante: Control por Voz Interactivo con Botón de Micrófono */}
       <View style={styles.floatingAudioBar}>
-        <View style={styles.equalizerRow}>
-          {[wave1, wave2, wave3, wave4, wave5, wave6, wave7].map((waveAnim, wIdx) => (
-            <Animated.View
-              key={`wave-${wIdx}`}
+        {/* Banner de feedback táctil y confirmación de comandos por voz */}
+        {voiceFeedback && (
+          <View
+            style={[
+              styles.voiceFeedbackBubble,
+              voiceFeedback.type === 'success' && styles.voiceFeedbackBubbleSuccess,
+              voiceFeedback.type === 'error' && styles.voiceFeedbackBubbleError,
+            ]}
+            testID="voice-feedback-banner"
+          >
+            <View
               style={[
-                styles.equalizerBar,
-                {
-                  transform: [{ scaleY: waveAnim }],
-                },
+                styles.voiceFeedbackDot,
+                voiceFeedback.type === 'success' && styles.voiceFeedbackDotSuccess,
+                voiceFeedback.type === 'error' && styles.voiceFeedbackDotError,
               ]}
             />
-          ))}
-        </View>
+            <Text style={styles.voiceFeedbackText}>{voiceFeedback.message}</Text>
+          </View>
+        )}
 
-        <Text style={styles.voiceCommandHint}>
-          Di «siguiente» o «repite el paso»
-        </Text>
+        {/* Botón Principal Interactivo: Pulsar para activar/pausar micrófono */}
+        <TouchableOpacity
+          style={[
+            styles.micActionButton,
+            isMicListening && styles.micActionButtonActive,
+          ]}
+          onPress={toggleVoiceListening}
+          activeOpacity={0.85}
+          testID="btn-toggle-mic-cooking"
+        >
+          <View style={[styles.micIconCircle, isMicListening && styles.micIconCircleActive]}>
+            <VectorIcon
+              name="mic"
+              size={22}
+              color={isMicListening ? '#000000' : Colors.primaryGreen}
+            />
+          </View>
 
+          <View style={styles.micButtonTextCol}>
+            <Text
+              style={[
+                styles.micButtonMainText,
+                isMicListening && styles.micButtonMainTextActive,
+              ]}
+            >
+              {isMicListening ? 'Escuchando tu voz...' : 'Pulsar para activar micrófono'}
+            </Text>
+            <Text style={styles.micButtonSubText}>
+              {isMicListening
+                ? 'Di «pasa al siguiente paso» o «ve al paso 4»'
+                : 'Pulsa el botón para dar órdenes por voz'}
+            </Text>
+          </View>
+
+          {/* Mini ecualizador o badge cuando está activo */}
+          {isMicListening ? (
+            <View style={styles.equalizerRowSmall}>
+              {[wave1, wave2, wave3, wave4, wave5].map((waveAnim, wIdx) => (
+                <Animated.View
+                  key={`wave-${wIdx}`}
+                  style={[
+                    styles.equalizerBarSmall,
+                    {
+                      transform: [{ scaleY: waveAnim }],
+                    },
+                  ]}
+                />
+              ))}
+            </View>
+          ) : (
+            <View style={styles.micIdleBadge}>
+              <Text style={styles.micIdleBadgeText}>MUTE</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        {/* Indicador de gestos alternativos y manos libres */}
         <Text style={styles.proximityHint}>
-          Pasa la mano para avanzar, sin tocar la pantalla o desliza horizontalmente
+          Pasa la mano para avanzar, sin tocar la pantalla, o pulsa el micrófono para hablar
         </Text>
       </View>
 
@@ -725,6 +923,51 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  topRightControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  voiceTopPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#162921',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 230, 118, 0.35)',
+    gap: 6,
+  },
+  voiceTopPillActive: {
+    backgroundColor: '#162921',
+    borderColor: 'rgba(0, 230, 118, 0.5)',
+  },
+  voiceTopPillInactive: {
+    backgroundColor: '#242426',
+    borderColor: '#3A3A3C',
+  },
+  voiceTopPillText: {
+    color: '#00E676',
+    fontSize: 12,
+    fontWeight: '600',
+    fontFamily: Typography.family,
+  },
+  voiceTopPillTextActive: {
+    color: '#00E676',
+  },
+  voiceTopPillTextInactive: {
+    color: '#9CA3AF',
+  },
+  voiceIndicatorDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#6B7280',
+  },
+  voiceIndicatorDotActive: {
+    backgroundColor: '#00E676',
   },
   backCircleButton: {
     width: 42,
@@ -1091,6 +1334,130 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     fontFamily: Typography.family,
     marginBottom: 2,
+  },
+  voiceFeedbackBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1C1C1E',
+    borderWidth: 1,
+    borderColor: '#3A3A3C',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    marginBottom: 10,
+    maxWidth: '90%',
+    gap: 8,
+  },
+  voiceFeedbackBubbleSuccess: {
+    backgroundColor: 'rgba(0, 230, 118, 0.12)',
+    borderColor: 'rgba(0, 230, 118, 0.4)',
+  },
+  voiceFeedbackBubbleError: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderColor: 'rgba(239, 68, 68, 0.4)',
+  },
+  voiceFeedbackDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#60A5FA',
+  },
+  voiceFeedbackDotSuccess: {
+    backgroundColor: '#00E676',
+  },
+  voiceFeedbackDotError: {
+    backgroundColor: '#EF4444',
+  },
+  voiceFeedbackText: {
+    color: '#E5E7EB',
+    fontSize: 13,
+    fontWeight: '600',
+    fontFamily: Typography.family,
+  },
+  micActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1C1C1E',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    width: '90%',
+    maxWidth: 380,
+    marginBottom: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  micActionButtonActive: {
+    backgroundColor: '#12241A',
+    borderColor: '#00E676',
+    shadowColor: '#00E676',
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+  },
+  micIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0, 230, 118, 0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 230, 118, 0.3)',
+    marginRight: 12,
+  },
+  micIconCircleActive: {
+    backgroundColor: '#00E676',
+    borderColor: '#00E676',
+  },
+  micButtonTextCol: {
+    flex: 1,
+  },
+  micButtonMainText: {
+    color: '#FFFFFF',
+    fontSize: 14.5,
+    fontWeight: '700',
+    fontFamily: Typography.family,
+    marginBottom: 2,
+  },
+  micButtonMainTextActive: {
+    color: '#00E676',
+  },
+  micButtonSubText: {
+    color: '#9CA3AF',
+    fontSize: 11.5,
+    fontFamily: Typography.family,
+  },
+  equalizerRowSmall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    height: 24,
+    paddingLeft: 8,
+  },
+  equalizerBarSmall: {
+    width: 3,
+    height: 18,
+    borderRadius: 1.5,
+    backgroundColor: '#00E676',
+  },
+  micIdleBadge: {
+    backgroundColor: '#2C2C2E',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#3A3A3C',
+  },
+  micIdleBadgeText: {
+    color: '#8E8E93',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   proximityHint: {
     color: '#9CA3AF',

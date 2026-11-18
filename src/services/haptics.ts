@@ -29,5 +29,29 @@ export const HapticFeedback = {
       // Ignorar de forma segura
     }
   },
+
+  notificationSuccessAsync: () => {
+    try {
+      if (Platform.OS === 'android') {
+        Vibration.vibrate([0, 20, 40, 25]);
+      } else {
+        Vibration.vibrate();
+      }
+    } catch {
+      // Ignorar de forma segura
+    }
+  },
+
+  notificationErrorAsync: () => {
+    try {
+      if (Platform.OS === 'android') {
+        Vibration.vibrate([0, 40, 40, 40]);
+      } else {
+        Vibration.vibrate();
+      }
+    } catch {
+      // Ignorar de forma segura
+    }
+  },
 };
 
