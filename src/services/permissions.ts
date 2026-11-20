@@ -33,6 +33,13 @@ export class PermissionsManager {
   static async requestAudioPermission(): Promise<boolean> {
     if (Platform.OS === 'android') {
       try {
+        const hasPermission = await PermissionsAndroid.check(
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO
+        );
+        if (hasPermission) {
+          return true;
+        }
+
         const granted = await PermissionsAndroid.request(
           PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
           {

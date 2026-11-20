@@ -14,12 +14,14 @@ import {
 } from '../src/utils/recipeVoiceCommands';
 import { VoiceRecognitionService } from '../src/services/voiceRecognitionService';
 import { SpeechSynthesisService } from '../src/services/speechSynthesisService';
+import { PermissionsManager } from '../src/services/permissions';
 
 describe('⚡ RecipeVoiceNavigation: Control por Voz Interactivo en Recetas ⚡', () => {
   beforeEach(async () => {
-    jest.clearAllMocks();
+    jest.restoreAllMocks();
     jest.spyOn(SpeechSynthesisService, 'speak').mockImplementation(() => {});
     jest.spyOn(SpeechSynthesisService, 'stop').mockImplementation(() => {});
+    jest.spyOn(PermissionsManager, 'requestAudioPermission').mockResolvedValue(true);
     await ReactTestRenderer.act(async () => {
       store.dispatch(setActiveRecipe(DEFAULT_RECIPE));
       store.dispatch(setHandsFreeActive(true));
@@ -136,18 +138,28 @@ describe('⚡ RecipeVoiceNavigation: Control por Voz Interactivo en Recetas ⚡'
       const micBtn = root.findByProps({ testID: 'btn-toggle-mic-cooking' });
       expect(micBtn).toBeDefined();
 
+      // En reposo inicial debe invitar a pulsar para activar el micrófono
       const textNodes = micBtn.findAllByType('Text' as any);
       const textContents = textNodes.map((n: any) => n.props.children).join(' ');
-      expect(textContents).toContain('Escuchando');
+      expect(textContents).toContain('Pulsar para activar micrófono');
+
+      // Tocar el botón de micrófono para activar
+      await ReactTestRenderer.act(async () => {
+        micBtn.props.onPress();
+      });
+
+      const textNodesActive = micBtn.findAllByType('Text' as any);
+      const textContentsActive = textNodesActive.map((n: any) => n.props.children).join(' ');
+      expect(textContentsActive).toContain('Escuchando');
 
       // Tocar el botón de micrófono para pausar
       await ReactTestRenderer.act(async () => {
         micBtn.props.onPress();
       });
 
-      const textNodesAfter = micBtn.findAllByType('Text' as any);
-      const textContentsAfter = textNodesAfter.map((n: any) => n.props.children).join(' ');
-      expect(textContentsAfter).toContain('Pulsar para activar micrófono');
+      const textNodesPaused = micBtn.findAllByType('Text' as any);
+      const textContentsPaused = textNodesPaused.map((n: any) => n.props.children).join(' ');
+      expect(textContentsPaused).toContain('Pulsar para activar micrófono');
 
       await ReactTestRenderer.act(() => {
         renderer.unmount();
@@ -170,6 +182,13 @@ describe('⚡ RecipeVoiceNavigation: Control por Voz Interactivo en Recetas ⚡'
         );
       });
 
+      // Activar micrófono mediante el botón
+      const root = renderer.root;
+      const micBtn = root.findByProps({ testID: 'btn-toggle-mic-cooking' });
+      await ReactTestRenderer.act(async () => {
+        micBtn.props.onPress();
+      });
+
       expect(voiceCallback).toBeDefined();
 
       // Emitir voz simulada: "pasa al paso 4"
@@ -181,7 +200,6 @@ describe('⚡ RecipeVoiceNavigation: Control por Voz Interactivo en Recetas ⚡'
       expect(store.getState().recipes.currentStepIndex).toBe(3);
 
       // Comprobar banner de feedback visual
-      const root = renderer.root;
       const banner = root.findByProps({ testID: 'voice-feedback-banner' });
       expect(banner).toBeDefined();
       const bannerText = banner.findByType('Text' as any).props.children;
@@ -210,6 +228,12 @@ describe('⚡ RecipeVoiceNavigation: Control por Voz Interactivo en Recetas ⚡'
             <HandsFreeCookingScreen />
           </Provider>
         );
+      });
+
+      const root = renderer.root;
+      const micBtn = root.findByProps({ testID: 'btn-toggle-mic-cooking' });
+      await ReactTestRenderer.act(async () => {
+        micBtn.props.onPress();
       });
 
       // Emitir voz simulada: "pasa al siguiente paso"
@@ -245,6 +269,12 @@ describe('⚡ RecipeVoiceNavigation: Control por Voz Interactivo en Recetas ⚡'
         );
       });
 
+      const root = renderer.root;
+      const micBtn = root.findByProps({ testID: 'btn-toggle-mic-cooking' });
+      await ReactTestRenderer.act(async () => {
+        micBtn.props.onPress();
+      });
+
       // Emitir voz: "paso anterior"
       await ReactTestRenderer.act(async () => {
         voiceCallback?.('paso anterior');
@@ -256,6 +286,91 @@ describe('⚡ RecipeVoiceNavigation: Control por Voz Interactivo en Recetas ⚡'
       await ReactTestRenderer.act(() => {
         renderer.unmount();
       });
+    });
+
+    test('Los chips de comandos rápidos permiten ejecutar comandos táctilmente en tablet o con ruido', async () => {
+      await ReactTestRenderer.act(async () => {
+        store.dispatch(goToStep(0)); // Paso 1 (índice 0)
+      });
+
+      let renderer: any;
+      await ReactTestRenderer.act(async () => {
+        renderer = ReactTestRenderer.create(
+          <Provider store={store}>
+            <HandsFreeCookingScreen />
+          </Provider>
+        );
+      });
+
+      const root = renderer.root;
+      const chipNext = root.findByProps({ testID: 'voice-chip-next' });
+      expect(chipNext).toBeDefined();
+
+      // Pulsar chip "pasa al siguiente paso"
+      await ReactTestRenderer.act(async () => {
+        chipNext.props.onPress();
+      });
+
+      // Debe avanzar al paso 2 (índice 1)
+      expect(store.getState().recipes.currentStepIndex).toBe(1);
+
+      // Pulsar chip "paso anterior"
+      const chipPrev = root.findByProps({ testID: 'voice-chip-prev' });
+      await ReactTestRenderer.act(async () => {
+        chipPrev.props.onPress();
+      });
+
+      // Debe volver al paso 1 (índice 0)
+      expect(store.getState().recipes.currentStepIndex).toBe(0);
+
+      await ReactTestRenderer.act(() => {
+        renderer.unmount();
+      });
+    });
+  });
+
+  describe('3. Resiliencia de VoiceRecognitionService en Android (Keep-Alive y Auto-Rearm)', () => {
+    test('Inicia el reconocimiento de voz correctamente', async () => {
+      const onResult = jest.fn();
+      const onError = jest.fn();
+      const started = await VoiceRecognitionService.startListening(onResult, onError);
+      expect(started).toBe(true);
+      expect(VoiceRecognitionService.getListeningState()).toBe(true);
+      await VoiceRecognitionService.stopListening();
+      expect(VoiceRecognitionService.getListeningState()).toBe(false);
+    });
+
+    test('Los errores transitorios de silencio de Android (códigos 6 y 7) no cancelan la escucha continua', async () => {
+      const onResult = jest.fn();
+      const onError = jest.fn();
+      await VoiceRecognitionService.startListening(onResult, onError);
+
+      // Simular error 7 (No match / silencio) de Android
+      const Voice = require('@react-native-voice/voice').default;
+      Voice.onSpeechError?.({ error: { code: '7', message: '7/No match' } });
+
+      // No debe llamar a onError ni apagar el estado
+      expect(onError).not.toHaveBeenCalled();
+      expect(VoiceRecognitionService.getListeningState()).toBe(true);
+
+      // Simular error 6 (Speech timeout) de Android
+      Voice.onSpeechError?.({ error: { code: '6', message: '6/No speech input' } });
+      expect(onError).not.toHaveBeenCalled();
+      expect(VoiceRecognitionService.getListeningState()).toBe(true);
+
+      await VoiceRecognitionService.stopListening();
+    });
+
+    test('El error fatal de permisos (código 9) detiene el servicio y notifica al usuario', async () => {
+      const onResult = jest.fn();
+      const onError = jest.fn();
+      await VoiceRecognitionService.startListening(onResult, onError);
+
+      const Voice = require('@react-native-voice/voice').default;
+      Voice.onSpeechError?.({ error: { code: '9', message: '9/Insufficient permissions' } });
+
+      expect(onError).toHaveBeenCalledWith(expect.stringContaining('Permiso'));
+      expect(VoiceRecognitionService.getListeningState()).toBe(false);
     });
   });
 });

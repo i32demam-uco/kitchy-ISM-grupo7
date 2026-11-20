@@ -66,7 +66,7 @@ export const HandsFreeCookingScreen: React.FC<HandsFreeCookingScreenProps> = ({ 
   const totalSteps = activeRecipe.steps.length;
 
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [isMicListening, setIsMicListening] = useState<boolean>(true);
+  const [isMicListening, setIsMicListening] = useState<boolean>(false);
   const [lastVoiceTranscript, setLastVoiceTranscript] = useState<string>('');
   const [voiceFeedback, setVoiceFeedback] = useState<{
     message: string;
@@ -441,6 +441,9 @@ export const HandsFreeCookingScreen: React.FC<HandsFreeCookingScreenProps> = ({ 
     [totalSteps, currentStepIndex, activeRecipe.steps, currentStep, recipesState.isTimerRunning, dispatch]
   );
 
+  const handleVoiceCommandRef = useRef(handleVoiceCommand);
+  handleVoiceCommandRef.current = handleVoiceCommand;
+
   // Alternar encendido/apagado del micrófono bajo demanda
   const toggleVoiceListening = useCallback(async () => {
     HapticFeedback.impactAsync();
@@ -454,11 +457,13 @@ export const HandsFreeCookingScreen: React.FC<HandsFreeCookingScreenProps> = ({ 
     } else {
       setIsMicListening(true);
       setVoiceFeedback({
-        message: 'Escuchando... Di «pasa al siguiente paso» o «ve al paso 4»',
+        message: 'Escuchando tu voz... Di «pasa al siguiente paso» o «ve al paso 4»',
         type: 'info',
       });
       const started = await VoiceRecognitionService.startListening(
-        handleVoiceCommand,
+        (text: string) => {
+          handleVoiceCommandRef.current(text);
+        },
         (errMsg) => {
           setIsMicListening(false);
           setVoiceFeedback({
@@ -471,25 +476,14 @@ export const HandsFreeCookingScreen: React.FC<HandsFreeCookingScreenProps> = ({ 
         setIsMicListening(false);
       }
     }
-  }, [isMicListening, handleVoiceCommand]);
+  }, [isMicListening]);
 
-  // Ciclo de vida del reconocimiento de voz vinculado a `isMicListening`
+  // Limpieza exclusiva al desmontar la pantalla de cocina
   useEffect(() => {
-    if (isMicListening) {
-      VoiceRecognitionService.startListening(handleVoiceCommand, (err) => {
-        setIsMicListening(false);
-        setVoiceFeedback({ message: err || 'Micrófono no disponible', type: 'error' });
-      }).catch(() => {
-        setIsMicListening(false);
-      });
-    } else {
-      VoiceRecognitionService.stopListening().catch(() => {});
-    }
-
     return () => {
       VoiceRecognitionService.stopListening().catch(() => {});
     };
-  }, [isMicListening, handleVoiceCommand]);
+  }, []);
 
   const handleBack = () => {
     HapticFeedback.selectionAsync();
@@ -896,6 +890,72 @@ export const HandsFreeCookingScreen: React.FC<HandsFreeCookingScreenProps> = ({ 
             </View>
           )}
         </TouchableOpacity>
+
+        {/* Chips de comandos rápidos por voz (ideal para tablets, entornos con ruido o dictado rápido) */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.voiceQuickChipsContainer}
+          style={styles.voiceQuickChipsScroll}
+          testID="voice-quick-chips-scroll"
+        >
+          <TouchableOpacity
+            style={styles.voiceChip}
+            onPress={() => handleVoiceCommand('pasa al siguiente paso')}
+            activeOpacity={0.7}
+            accessibilityLabel="Comando rápido: siguiente paso"
+            testID="voice-chip-next"
+          >
+            <VectorIcon name="chevron-right" size={12} color={Colors.primaryGreen} />
+            <Text style={styles.voiceChipText}>«pasa al siguiente paso»</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.voiceChip}
+            onPress={() => handleVoiceCommand('paso anterior')}
+            activeOpacity={0.7}
+            accessibilityLabel="Comando rápido: paso anterior"
+            testID="voice-chip-prev"
+          >
+            <VectorIcon name="chevron-left" size={12} color="#9CA3AF" />
+            <Text style={styles.voiceChipText}>«paso anterior»</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.voiceChip}
+            onPress={() => handleVoiceCommand(`pasa al paso ${Math.min(totalSteps, currentStepIndex + 2)}`)}
+            activeOpacity={0.7}
+            accessibilityLabel="Comando rápido: saltar paso"
+            testID="voice-chip-jump"
+          >
+            <VectorIcon name="format-list-numbered" size={12} color="#00E676" />
+            <Text style={styles.voiceChipText}>{`«ve al paso ${Math.min(totalSteps, currentStepIndex + 2)}»`}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.voiceChip}
+            onPress={() => handleVoiceCommand('repite el paso')}
+            activeOpacity={0.7}
+            accessibilityLabel="Comando rápido: repetir paso"
+            testID="voice-chip-repeat"
+          >
+            <VectorIcon name="volume-high" size={12} color="#00E676" />
+            <Text style={styles.voiceChipText}>«repite el paso»</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.voiceChip}
+            onPress={() => handleVoiceCommand(recipesState.isTimerRunning ? 'pausar temporizador' : 'iniciar temporizador')}
+            activeOpacity={0.7}
+            accessibilityLabel="Comando rápido: temporizador"
+            testID="voice-chip-timer"
+          >
+            <VectorIcon name="timer" size={12} color="#FFA000" />
+            <Text style={styles.voiceChipText}>
+              {recipesState.isTimerRunning ? '«pausar tiempo»' : '«iniciar temporizador»'}
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
 
         {/* Indicador de gestos alternativos y manos libres */}
         <Text style={styles.proximityHint}>
@@ -1458,6 +1518,33 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.5,
+  },
+  voiceQuickChipsScroll: {
+    maxHeight: 34,
+    marginTop: 8,
+    marginBottom: 6,
+  },
+  voiceQuickChipsContainer: {
+    paddingHorizontal: 2,
+    gap: 8,
+    alignItems: 'center',
+  },
+  voiceChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  voiceChipText: {
+    color: '#D1D5DB',
+    fontSize: 11,
+    fontWeight: '600',
+    fontFamily: Typography.family,
   },
   proximityHint: {
     color: '#9CA3AF',
